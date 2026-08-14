@@ -1,6 +1,14 @@
-# dshmarket
+# dshmarket · 插件市场
 
-**DeepSeek Harness 插件市场**：逛、搜、点一下安装——每笔安装/更新前都先过**静态安全审计闸门**。
+[English](README.md) | **中文**
+
+[![topic](https://img.shields.io/badge/topic-dsh--plugin-blue)](https://github.com/topics/dsh-plugin)
+[![stars](https://img.shields.io/github/stars/nanshan1995/DSH-Plugin-Market?style=flat)](https://github.com/nanshan1995/DSH-Plugin-Market)
+[![license](https://img.shields.io/badge/license-MIT-green)](LICENSE)
+
+DeepSeek Harness 插件市场：逛、搜、点一下安装——每笔安装/更新前都先过**静态安全审计闸门**。
+
+## 功能
 
 - 精选目录（awesome-dsh-plugin 收录）+ GitHub `dsh-plugin` 主题**实时全量浏览**（按 star / 最新排序，分页加载）
 - **中英互通搜索**：输入中文能命中英文插件（反之亦然），词表 + 宿主大模型**实时翻译**双层扩展
@@ -22,7 +30,7 @@ dsh plugin --profile web add github:nanshan1995/DSH-Plugin-Market
 
 ```sh
 git clone https://github.com/nanshan1995/DSH-Plugin-Market
-dsh plugin --profile web add link:$(pwd)/dshmarket
+dsh plugin --profile web add link:$(pwd)/DSH-Plugin-Market
 ```
 
 **方式三：npm**（后续发布后可用）
@@ -75,7 +83,7 @@ cordis.patch.yml      bundle patch：向 profile 插入 dsh-market 行
 
 **分页**：社区浏览每页 50、搜索每页 20；客户端「加载更多」严格递增（跨页重复自动向后补齐、余量缓存），显示已加载/真实总数，并注明 GitHub 1000 条检索上限。
 
-**安装执行**：同源 POST → 审计 → 重新唤起 `dsh` CLI 转发 pnpm（补 PATH，桌面宿主可用）→ 成功即热挂载；`dsh.bundle` 声明齐全的包由 profile 的 bundle 层自动加载。
+**安装执行**：同源 POST → 审计 → 重新唤起 `dsh` CLI 转发 pnpm（按平台补 PATH）→ 成功即热挂载；`dsh.bundle` 声明齐全的包由 profile 的 bundle 层自动加载。
 
 **Agent 协助**：对装后无法生效的插件，客户端经 `workspaces.startSession` 新建会话并把诊断任务预填进输入框，用户发送后由 Agent 接手排查。
 
