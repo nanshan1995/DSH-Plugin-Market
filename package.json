@@ -7,9 +7,9 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/nanshan1995/dshmarket.git"
+    "url": "git+https://github.com/nanshan1995/DSH-Plugin-Market.git"
   },
-  "homepage": "https://github.com/nanshan1995/dshmarket",
+  "homepage": "https://github.com/nanshan1995/DSH-Plugin-Market",
   "keywords": [
     "deepseek",
     "harness",

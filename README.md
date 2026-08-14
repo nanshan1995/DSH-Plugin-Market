@@ -1,7 +1,7 @@
 # dshmarket · DeepSeek Harness 插件市场 / Plugin Market
 
 [![topics](https://img.shields.io/badge/topic-dsh--plugin-blue)](https://github.com/topics/dsh-plugin)
-[![stars](https://img.shields.io/github/stars/nanshan1995/dshmarket?style=flat)](https://github.com/nanshan1995/dshmarket)
+[![stars](https://img.shields.io/github/stars/nanshan1995/DSH-Plugin-Market?style=flat)](https://github.com/nanshan1995/DSH-Plugin-Market)
 [![license](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
 逛、搜、点一下安装——每笔安装/更新前都先过**静态安全审计闸门**。
@@ -26,13 +26,13 @@ Browse, search, one-click install — every install/update passes a **static sec
 **方式一：从 GitHub 安装（推荐）**
 
 ```sh
-dsh plugin --profile web add github:nanshan1995/dshmarket
+dsh plugin --profile web add github:nanshan1995/DSH-Plugin-Market
 ```
 
 **方式二：本地链接（开发）**
 
 ```sh
-git clone https://github.com/nanshan1995/dshmarket
+git clone https://github.com/nanshan1995/DSH-Plugin-Market
 dsh plugin --profile web add link:$(pwd)/dshmarket
 ```
 
@@ -119,13 +119,13 @@ cordis.patch.yml      bundle patch：向 profile 插入 dsh-market 行
 **Option 1: from GitHub (recommended)**
 
 ```sh
-dsh plugin --profile web add github:nanshan1995/dshmarket
+dsh plugin --profile web add github:nanshan1995/DSH-Plugin-Market
 ```
 
 **Option 2: local link (development)**
 
 ```sh
-git clone https://github.com/nanshan1995/dshmarket
+git clone https://github.com/nanshan1995/DSH-Plugin-Market
 dsh plugin --profile web add link:$(pwd)/dshmarket
 ```
 

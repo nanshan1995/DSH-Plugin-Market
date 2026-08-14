@@ -15,13 +15,13 @@
 **方式一：从 GitHub 安装（推荐）**
 
 ```sh
-dsh plugin --profile web add github:nanshan1995/dshmarket
+dsh plugin --profile web add github:nanshan1995/DSH-Plugin-Market
 ```
 
 **方式二：本地链接（开发）**
 
 ```sh
-git clone https://github.com/nanshan1995/dshmarket
+git clone https://github.com/nanshan1995/DSH-Plugin-Market
 dsh plugin --profile web add link:$(pwd)/dshmarket
 ```
 
