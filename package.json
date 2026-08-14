@@ -1,0 +1,60 @@
+{
+  "name": "dshmarket",
+  "description": "DeepSeek Harness plugin market: curated catalog + live GitHub browsing, zh/en translated search, pre-install static security audit gate, paginated community listing. · DSH 可视化插件市场：精选目录 + GitHub 实时浏览、中英翻译搜索、安装前静态安全审计闸门、社区分页加载。",
+  "version": "1.1.0",
+  "type": "module",
+  "main": "lib/index.js",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/nanshan1995/dshmarket.git"
+  },
+  "homepage": "https://github.com/nanshan1995/dshmarket",
+  "keywords": [
+    "deepseek",
+    "harness",
+    "dsh",
+    "dsh-plugin",
+    "marketplace",
+    "plugin-manager",
+    "security",
+    "audit"
+  ],
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "^4.0.1"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "inject": [
+        "@deepseek-ai/dsh-client-connection",
+        "@deepseek-ai/dsh-client-runtime",
+        "@deepseek-ai/dsh-client-locale",
+        "@deepseek-ai/dsh-client-ui-settings"
+      ],
+      "platform": "web"
+    }
+  },
+  "exports": {
+    ".": {
+      "types": "./lib/types/index.d.ts",
+      "default": "./lib/index.js"
+    },
+    "./client": "./client/client.js",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib",
+    "client",
+    "data",
+    "cordis.patch.yml",
+    "README.md",
+    "README.zh.md",
+    "LICENSE"
+  ],
+  "publishConfig": {
+    "registry": "https://registry.npmjs.org/"
+  }
+}
