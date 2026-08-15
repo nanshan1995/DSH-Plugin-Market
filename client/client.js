@@ -353,6 +353,16 @@ const CSS = `
 .dshm-readme li{margin:2px 0}
 .dshm-readme pre{background:var(--dsw-alias-bg-module-platform,#f7f8fa);border:1px solid var(--dsw-alias-border-l2,#e5e7eb);border-radius:8px;padding:10px 12px;overflow:auto;font-family:var(--ds-font-family-code,ui-monospace,Menlo,monospace);font-size:12px;line-height:1.5}
 .dshm-readme code{font-family:var(--ds-font-family-code,ui-monospace,Menlo,monospace);font-size:12px;background:color-mix(in srgb,var(--dsw-alias-bg-module-platform,#f7f8fa) 80%,transparent);border-radius:4px;padding:0 4px}
+.dshm-readmeHtml{overflow-x:auto;margin:8px 0}
+.dshm-readmeHtml table{border-collapse:collapse;margin:8px 0;font-size:12px;width:100%}
+.dshm-readmeHtml th,.dshm-readmeHtml td{border:1px solid var(--dsw-alias-border-l2,#e5e7eb);padding:5px 9px;text-align:left;vertical-align:top}
+.dshm-readmeHtml th{background:var(--dsw-alias-bg-module-platform,#f7f8fa);font-weight:600}
+.dshm-readmeHtml img{max-width:100%;border-radius:6px}
+.dshm-readmeHtml a{color:var(--dsw-alias-state-business-primary,#4f6ef7);text-decoration:none}
+.dshm-readmeHtml a:hover{text-decoration:underline}
+.dshm-readmeHtml blockquote{border-left:3px solid var(--dsw-alias-border-l2,#e5e7eb);margin:6px 0;padding:2px 12px;color:var(--dsw-alias-label-secondary,#6b7280)}
+.dshm-readmeHtml details{margin:6px 0;padding:6px 10px;border:1px solid var(--dsw-alias-border-l2,#e5e7eb);border-radius:6px}
+.dshm-readmeHtml summary{cursor:pointer;font-weight:600}
 .dshm-readme pre code{background:none;padding:0}
 .dshm-readme a{color:var(--dsw-alias-state-business-primary,#4f6ef7);text-decoration:none}
 .dshm-readme a:hover{text-decoration:underline}
@@ -597,6 +607,70 @@ function inlineMd(text, prefix) {
   return out
 }
 
+/**
+ * 把 README 里的 HTML（表格/图片/内联标签）按安全白名单解析为 React 元素。
+ * 用浏览器原生 DOMParser 解析（不执行脚本），遍历 DOM 时只保留白名单
+ * 标签与安全属性，避免 XSS。DOMParser 不可用（非浏览器）时降级为纯文本。
+ */
+const SAFE_HTML_TAGS = new Set(['table', 'thead', 'tbody', 'tfoot', 'tr', 'th', 'td', 'img', 'br', 'center', 'div', 'p', 'a', 'strong', 'b', 'em', 'i', 'code', 'kbd', 'sup', 'sub', 'details', 'summary', 'ul', 'ol', 'li', 'span', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'hr', 'blockquote', 'pre'])
+const SAFE_HTML_ATTRS = new Set(['href', 'src', 'width', 'height', 'align', 'colspan', 'rowspan', 'style', 'title', 'alt', 'open'])
+function parseSafeHtml(html) {
+  if (typeof DOMParser === 'undefined') {
+    // 非浏览器降级：去掉标签只留文本
+    return [String(html).replace(/<[^>]*>/g, '')]
+  }
+  const doc = new DOMParser().parseFromString(String(html), 'text/html')
+  const out = []
+  let k = 0
+  const convert = (node) => {
+    const kids = []
+    for (const child of node.childNodes) {
+      if (child.nodeType === 3) {
+        const t = (child.textContent || '').trim()
+        if (t !== '') kids.push(t)
+      } else if (child.nodeType === 1) {
+        const tag = child.tagName.toLowerCase()
+        if (!SAFE_HTML_TAGS.has(tag)) continue
+        const props = { key: 'h' + (k++) }
+        for (const attr of child.attributes) {
+          const name = attr.name.toLowerCase()
+          const val = attr.value
+          if (name.startsWith('on')) continue
+          if (!SAFE_HTML_ATTRS.has(name)) continue
+          if ((name === 'href' || name === 'src') && /^(javascript:|data:text\/html)/i.test(val)) continue
+          if (name === 'href') { props.href = val; props.target = '_blank'; props.rel = 'noreferrer' }
+          else if (name === 'style') {
+            // style 只保留宽高/对齐等安全子集
+            const safe = val.split(';').map(s => s.trim()).filter(s => /^(width|height|max-width|max-height|text-align|vertical-align|border|padding|margin|background|color|border-radius|font-size|font-weight|line-height)\s*:/i.test(s)).join(';')
+            if (safe !== '') props.style = safe
+          }
+          else props[name] = val
+        }
+        const sub = convert(child)
+        if (tag === 'img') {
+          if (!props.src) continue
+          if (sub.length > 0) props.alt = sub.join(' ')
+          kids.push(h('img', props))
+        } else if (tag === 'br' || tag === 'hr') {
+          kids.push(h(tag, props))
+        } else {
+          kids.push(h(tag, props, ...sub))
+        }
+      }
+    }
+    return kids
+  }
+  for (const c of doc.body.childNodes) {
+    if (c.nodeType === 3) {
+      const t = (c.textContent || '').trim()
+      if (t !== '') out.push(t)
+    } else if (c.nodeType === 1) {
+      out.push(...convert(c))
+    }
+  }
+  return out
+}
+
 function renderMarkdown(md) {
   const lines = String(md).split('\n')
   const blocks = []
@@ -605,8 +679,21 @@ function renderMarkdown(md) {
   const blank = l => /^\s*$/.test(l)
   const isBlockStart = l => /^\s*```/.test(l) || /^#{1,6}\s/.test(l) || /^\s*[-*]\s/.test(l)
     || /^\s*\d+[.)]\s/.test(l) || /^\s*(-{3,}|\*{3,})$/.test(l)
+  const htmlOpen = l => /^\s*<(table|thead|tbody|tr|img|center|div|p|br|details|summary|kbd|sup|sub)/i.test(l)
   while (i < lines.length) {
     if (blank(lines[i])) { i++; continue }
+    // 整段 HTML（README 常见 <table> 等）：按安全白名单解析为 React 元素。
+    if (htmlOpen(lines[i])) {
+      let buf = []
+      while (i < lines.length) {
+        buf.push(lines[i])
+        if (/<\/(table|div|center|details)>/i.test(lines[i])) { i++; break }
+        i++
+      }
+      const parsed = parseSafeHtml(buf.join('\n'))
+      if (parsed !== null && parsed.length > 0) blocks.push(h('div', { key: key++, className: 'dshm-readmeHtml' }, parsed))
+      continue
+    }
     if (/^\s*```/.test(lines[i])) {
       const buf = []
       i++
