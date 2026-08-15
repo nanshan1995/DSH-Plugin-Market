@@ -96,7 +96,9 @@ The static audit is a **capability radar, not a behavior firewall**: it blocks t
 - `main` — **stable release branch**: only accepts tested merges; every merge is a releasable state
 - `test` — **daily development branch**: all adjustments, fixes and experiments happen here; merged back to `main` after tests pass
 
-Flow: develop and self-test on `test` → verify → merge into `main` (a PR is recommended) → version and release from `main`.
+Flow: develop and self-test on `test` → verify → open a PR into `main` → merge only after the maintainer explicitly approves → `main` is the release.
+
+> ⚠️ **Release approval**: `main` is branch-protected (PRs required, direct pushes rejected). The Agent only develops, self-tests and opens PRs on `test`; **merging/releasing must be confirmed by the maintainer (the repository owner) — the Agent never merges or releases on its own**.
 
 ```sh
 git checkout test          # switch to the test branch
