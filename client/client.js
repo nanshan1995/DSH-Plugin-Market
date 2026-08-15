@@ -1385,11 +1385,15 @@ function MarketSection(props) {
         h('a', { className: 'dshm-src', href: p.url, target: '_blank', rel: 'noreferrer' }, t('viewSource'))))
   }
 
-  /** 进行中的操作（安装/更新/卸载）置顶：进度就在眼前。 */
+  /** 发现页排序权重（打开页面即生效，无视热门/最新排序）：
+   *  0 = 正在安装/更新/卸载（最前）→ 1 = 已安装/可更新 → 2 = 未安装；
+   *  同权重内保持原来的热门/最新顺序。 */
   const activeRank = (p) => {
+    if (busyUrl === p.url) return 0
     const inKey = installedKeyOf(p, installed)
-    const act = busyUrl === p.url || (inKey !== null && (updatingName === inKey || removingName === inKey))
-    return act ? 0 : 1
+    if (inKey === null) return 2
+    if (updatingName === inKey || removingName === inKey) return 0
+    return 1
   }
 
   const query = q.trim()
