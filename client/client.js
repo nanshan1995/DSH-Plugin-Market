@@ -946,10 +946,15 @@ function MarketSection(props) {
       .finally(() => setEnvFixing(false))
   }, [])
 
-  /** Load a plugin's README into the in-market usage-instructions dialog. */
-  const openReadme = useCallback((name) => {
+  /** Load a plugin's README into the in-market usage-instructions dialog.
+   *  Installed plugins read their local node_modules README; community
+   *  (discover) plugins pass the GitHub URL and the server fetches it. */
+  const openReadme = useCallback((name, url) => {
+    const qs = url
+      ? '?url=' + encodeURIComponent(url) + '&lang=' + lang
+      : '?name=' + encodeURIComponent(name) + '&lang=' + lang
     setReadmeView({ name, loading: true })
-    fetch('/dsh-plugin-market/readme?name=' + encodeURIComponent(name) + '&lang=' + lang, { cache: 'no-store' })
+    fetch('/dsh-plugin-market/readme' + qs, { cache: 'no-store' })
       .then(res => res.json())
       .then(body => {
         if (body.ok) setReadmeView({ name, content: body.content, source: body.source, repaired: body.repaired === true })
@@ -1169,6 +1174,7 @@ function MarketSection(props) {
         h('span', { className: 'dshm-spin' }),
         h('code', { className: 'dshm-grow' }, progressLine || t('progressHint'))),
       h('div', { className: 'dshm-richFoot' },
+        h('button', { className: 'dshm-btn ghost', onClick: () => openReadme(p.name, p.url) }, t('readme')),
         h('span', { className: 'dshm-grow' }),
         h('a', { className: 'dshm-src', href: p.url, target: '_blank', rel: 'noreferrer' }, t('viewSource'))))
   }
