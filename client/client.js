@@ -1,9 +1,9 @@
-window.__ModuleLoader__.load({ id: "dshmarket", factory: (require) => {
+window.__ModuleLoader__.load({ id: "dsh-plugin-market", factory: (require) => {
 var module = { exports: {} }; var exports = module.exports;
 'use strict'
 
 /**
- * dsh-market client: registers a "Market" settings section rendering the
+ * dsh-plugin-market client: registers a "Market" settings section rendering the
  * plugin market UI, styled after the official settings plugin inventory
  * (compact two-column collapsible cards, official design tokens) and the
  * official permission/approval presentation for audit results. Hand-authored
@@ -15,15 +15,43 @@ const React = require('react')
 const h = React.createElement
 const { useState, useEffect, useMemo, useCallback } = React
 
-const NS = 'dsh-market'
+const NS = 'dsh-plugin-market'
+// README 内容缓存（按 name|url|path）：只存浏览器内存、不落盘；
+// 30 分钟自动过期释放 + 容量上限（LRU 淘汰最久未用），避免重复请求。
+const readmeCache = new Map()
+const README_CACHE_TTL_MS = 30 * 60 * 1000
+const README_CACHE_MAX = 100
+const readmeCacheGet = (key) => {
+  const hit = readmeCache.get(key)
+  if (hit === undefined) return undefined
+  if (Date.now() - hit.at > README_CACHE_TTL_MS) {
+    readmeCache.delete(key)
+    return undefined
+  }
+  readmeCache.delete(key)
+  readmeCache.set(key, hit)
+  return hit.entry
+}
+const readmeCacheSet = (key, entry) => {
+  if (readmeCache.has(key)) readmeCache.delete(key)
+  readmeCache.set(key, { at: Date.now(), entry })
+  while (readmeCache.size > README_CACHE_MAX) {
+    readmeCache.delete(readmeCache.keys().next().value)
+  }
+}
 
 const zh = {
   nav: '插件市场',
   subtitle: '发现社区为 DeepSeek Harness 打造的能力',
   disclaimer: '本市场仅提供插件的浏览、下载与管理。下载前只做最基础的静态检查，不构成安全或合规承诺；下载后使用插件产生的一切问题与损失，与作者无关。',
-  searchPh: '搜索插件：名称或描述，中英近义互通（如「提醒」可命中 notification）',
+  searchPh: '在社区（GitHub 实时）里搜索：名称或描述',
+  searchPhCommunity: '在社区（GitHub 实时）里搜索：名称或描述',
   tabDiscover: '发现',
+  tabFavorites: '我的精选',
   tabInstalled: '已安装',
+  favEmpty: '还没有收藏。去「发现」页浏览社区插件，点 ☆ 收藏',
+  favAdd: '收藏到我的精选',
+  favRemove: '取消收藏',
   install: '安装',
   installing: '安装中…',
   installedBadge: '✓ 已装好',
@@ -37,6 +65,7 @@ const zh = {
   confirmWarn: '插件是社区第三方代码。安装即表示你信任该来源；构建脚本默认被禁止执行。',
   cancel: '取消',
   empty: '没有匹配的插件',
+  rateLimitedEmpty: 'GitHub 搜索被限流且暂无缓存，稍等片刻再试（也可设置 DSHMARKET_GITHUB_TOKEN 提升配额）',
   installedEmpty: '还没有装过社区插件，去「发现」页逛逛吧',
   loadFail: '插件目录加载失败，请稍后重试',
   installFail: '安装失败',
@@ -53,6 +82,7 @@ const zh = {
   readmeEmpty: '该插件未提供 README 使用说明',
   readmeFail: '使用说明加载失败',
   readmeRepaired: '已修复乱码',
+  readmeRefreshHint: '强制刷新：绕过缓存重新拉取最新内容',
   readmeRepairedHint: '该 README 原文件编码已损坏（双重 GB18030 乱码），已自动还原为可读文本；个别已被损坏的位置显示为「?」。',
   disable: '停用',
   enable: '启用',
@@ -69,7 +99,7 @@ const zh = {
   envFixing: '正在准备…',
   envRetry: '重试',
   envFixFail: '自动准备没成功，请点"导出日志"把文件发给我们反馈',
-  loading: '正在加载插件目录…',
+  loading: '正在加载使用说明…',
   backTop: '回到顶部',
   sortHot: '最热',
   sortNew: '最新',
@@ -91,6 +121,10 @@ const zh = {
   auditHooks: '安装期脚本钩子',
   auditHookBlock: '包含安装期脚本，为安全起见已阻止（这类脚本会在安装时以你的身份执行任意命令）',
   auditReviewHint: '把插件名告诉 Agent，可人工复核源码后再决定是否放行',
+  forceInstall: '仍然安装',
+  forceUpdate: '仍然更新',
+  forceInstallConfirm: '确认强制安装？风险自负',
+  forceInstallHint: '审计未通过仍继续安装，风险由你自己承担',
   auditGateOff: '审计闸门已关闭（DSHMARKET_AUDIT_GATE=off），社区来源不可安装',
   auditNoFindings: '未发现高危项（可能因钩子或审计不可用而阻止）',
   communityBadge: '社区',
@@ -137,9 +171,14 @@ const en = {
   nav: 'Plugin Market',
   subtitle: 'Discover community plugins for DeepSeek Harness',
   disclaimer: 'This market only provides plugin browsing, download and management. Only a minimal static check runs before download — no safety or compliance promise is made. The author is not responsible for any issues or losses arising from the use of installed plugins.',
-  searchPh: 'Search plugins — name or description, zh/en synonyms both match',
+  searchPh: 'Search the live GitHub community — name or description',
+  searchPhCommunity: 'Search the live GitHub community — name or description',
   tabDiscover: 'Discover',
+  tabFavorites: 'My Favorites',
   tabInstalled: 'Installed',
+  favEmpty: 'No favorites yet — browse the Discover tab and tap ☆ to save plugins',
+  favAdd: 'Add to my favorites',
+  favRemove: 'Remove from favorites',
   install: 'Install',
   installing: 'Installing…',
   installedBadge: '✓ Installed',
@@ -153,6 +192,7 @@ const en = {
   confirmWarn: 'Plugins are third-party community code. Installing means you trust this source; build scripts are blocked by default.',
   cancel: 'Cancel',
   empty: 'No plugins match',
+  rateLimitedEmpty: 'GitHub search is rate-limited with no cached results — retry in a moment (set DSHMARKET_GITHUB_TOKEN for a higher quota)',
   installedEmpty: 'No community plugins yet — browse the Discover tab',
   loadFail: 'Failed to load the plugin catalog, please retry later',
   installFail: 'Install failed',
@@ -169,6 +209,7 @@ const en = {
   readmeEmpty: 'No README provided for this plugin',
   readmeFail: 'Failed to load the README',
   readmeRepaired: 'encoding repaired',
+  readmeRefreshHint: 'Force refresh: re-fetch the latest content, bypassing the cache',
   readmeRepairedHint: 'This README shipped with corrupted encoding (double GB18030 mojibake) and was restored to readable text; spots already destroyed upstream show as "?".',
   disable: 'Disable',
   enable: 'Enable',
@@ -185,7 +226,7 @@ const en = {
   envFixing: 'Setting up…',
   envRetry: 'Retry',
   envFixFail: 'Automatic setup failed — please use "Export log" and send us the file',
-  loading: 'Loading the catalog…',
+  loading: 'Loading…',
   backTop: 'Back to top',
   sortHot: 'Top',
   sortNew: 'New',
@@ -207,6 +248,10 @@ const en = {
   auditHooks: 'Install-time script hooks',
   auditHookBlock: 'Contains install-time scripts — blocked for safety (they run arbitrary commands as you during install)',
   auditReviewHint: 'Tell the Agent this plugin name — it can review the source manually before you decide',
+  forceInstall: 'Install anyway',
+  forceUpdate: 'Update anyway',
+  forceInstallConfirm: 'Force install? You take the risk',
+  forceInstallHint: 'Installing despite the failed audit — you take the risk',
   auditGateOff: 'Audit gate is off (DSHMARKET_AUDIT_GATE=off) — community sources cannot be installed',
   auditNoFindings: 'No high-risk findings (blocked by hooks or an unavailable audit)',
   communityBadge: 'community',
@@ -323,8 +368,10 @@ const CSS = `
 .dshm-irowTimeRow{overflow-wrap:break-word}
 .dshm-readmeModal{width:min(760px,94vw);display:flex;flex-direction:column;max-height:80vh}
 .dshm-readmeHead{display:flex;align-items:center;gap:8px;margin-bottom:10px;flex-shrink:0}
-.dshm-readmeHead h3{margin:0}
+.dshm-readmeHead h3{margin:0;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}
 .dshm-readme{max-height:62vh;overflow:auto;font-size:13px;line-height:1.65;color:var(--dsw-alias-label-primary,#1f2328);padding-right:4px}
+.dshm-readmeNotice{font-size:12px;line-height:1.5;color:var(--dsw-alias-state-warn-primary,#b45309);background:rgba(180,83,9,.09);border:1px solid rgba(180,83,9,.25);border-radius:6px;padding:5px 10px;margin:2px 0 8px}
+.dshm-readmeLoading{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--dsw-alias-label-tertiary,#9ca3af);padding:6px 0}
 .dshm-readme h1,.dshm-readme h2{font-size:16px;font-weight:600;line-height:24px;margin:14px 0 6px;border-bottom:1px solid var(--dsw-alias-border-l2,#e5e7eb);padding-bottom:4px}
 .dshm-readme h3{font-size:14px;font-weight:600;margin:12px 0 4px}
 .dshm-readme h4,.dshm-readme h5,.dshm-readme h6{font-size:13px;font-weight:600;margin:10px 0 4px}
@@ -333,6 +380,16 @@ const CSS = `
 .dshm-readme li{margin:2px 0}
 .dshm-readme pre{background:var(--dsw-alias-bg-module-platform,#f7f8fa);border:1px solid var(--dsw-alias-border-l2,#e5e7eb);border-radius:8px;padding:10px 12px;overflow:auto;font-family:var(--ds-font-family-code,ui-monospace,Menlo,monospace);font-size:12px;line-height:1.5}
 .dshm-readme code{font-family:var(--ds-font-family-code,ui-monospace,Menlo,monospace);font-size:12px;background:color-mix(in srgb,var(--dsw-alias-bg-module-platform,#f7f8fa) 80%,transparent);border-radius:4px;padding:0 4px}
+.dshm-readmeHtml{overflow-x:auto;margin:8px 0}
+.dshm-readmeHtml table{border-collapse:collapse;margin:8px 0;font-size:12px;width:100%}
+.dshm-readmeHtml th,.dshm-readmeHtml td{border:1px solid var(--dsw-alias-border-l2,#e5e7eb);padding:5px 9px;text-align:left;vertical-align:top}
+.dshm-readmeHtml th{background:var(--dsw-alias-bg-module-platform,#f7f8fa);font-weight:600}
+.dshm-readmeHtml img{max-width:100%;border-radius:6px}
+.dshm-readmeHtml a{color:var(--dsw-alias-state-business-primary,#4f6ef7);text-decoration:none}
+.dshm-readmeHtml a:hover{text-decoration:underline}
+.dshm-readmeHtml blockquote{border-left:3px solid var(--dsw-alias-border-l2,#e5e7eb);margin:6px 0;padding:2px 12px;color:var(--dsw-alias-label-secondary,#6b7280)}
+.dshm-readmeHtml details{margin:6px 0;padding:6px 10px;border:1px solid var(--dsw-alias-border-l2,#e5e7eb);border-radius:6px}
+.dshm-readmeHtml summary{cursor:pointer;font-weight:600}
 .dshm-readme pre code{background:none;padding:0}
 .dshm-readme a{color:var(--dsw-alias-state-business-primary,#4f6ef7);text-decoration:none}
 .dshm-readme a:hover{text-decoration:underline}
@@ -346,11 +403,13 @@ const CSS = `
 .dshm-grow{flex:1}
 .dshm-src{font-size:12px;color:var(--dsw-alias-label-tertiary,#9ca3af);text-decoration:none}
 .dshm-src:hover{color:var(--dsw-alias-state-business-primary,#4f6ef7)}
-.dshm-btn{border:1px solid transparent;background:0 0;border-radius:6px;padding:4px 10px;font:inherit;font-size:12px;line-height:18px;cursor:pointer;display:inline-flex;align-items:center;gap:4px;text-decoration:none}
+.dshm-btn{border:1px solid transparent;background:0 0;border-radius:6px;padding:4px 10px;font:inherit;font-size:12px;line-height:18px;cursor:pointer;display:inline-flex;align-items:center;gap:4px;text-decoration:none;white-space:nowrap;flex-shrink:0}
 .dshm-btn.primary{background:var(--dsw-alias-state-business-primary,#4f6ef7);color:#fff;font-weight:500}
 .dshm-btn.primary:hover:not(:disabled){background:color-mix(in srgb,var(--dsw-alias-state-business-primary,#4f6ef7) 88%,#000)}
 .dshm-btn.ghost{border-color:var(--dsw-alias-border-l2,#d9d9d9);color:var(--dsw-alias-label-primary,#1f2328)}
 .dshm-btn.ghost:hover{background:var(--dsw-alias-interactive-bg-hover,rgba(0,0,0,.03))}
+.dshm-btn.ghost.on{border-color:var(--dsw-alias-state-business-primary,#4f6ef7);color:var(--dsw-alias-state-business-primary,#4f6ef7);background:color-mix(in srgb,var(--dsw-alias-state-business-primary,#4f6ef7) 10%,transparent);font-weight:500}
+.dshm-btn.fav{border-color:transparent;color:var(--dsw-alias-state-warn-primary,#eab308);background:color-mix(in srgb,var(--dsw-alias-state-warn-primary,#eab308) 12%,transparent);font-size:14px;padding:2px 8px}
 .dshm-btn.upd{background:color-mix(in srgb,var(--dsw-alias-state-warn-primary,#ea580c) 10%,transparent);color:var(--dsw-alias-state-warn-primary,#ea580c);font-weight:500}
 .dshm-btn.danger{border-color:var(--dsw-alias-state-error-primary,#dc2626);color:var(--dsw-alias-state-error-primary,#dc2626)}
 .dshm-btn.danger:hover{background:color-mix(in srgb,var(--dsw-alias-state-error-primary,#dc2626) 10%,transparent)}
@@ -379,6 +438,8 @@ const CSS = `
 .dshm-pill.block{background:color-mix(in srgb,var(--dsw-alias-state-error-primary,#dc2626) 10%,transparent);color:var(--dsw-alias-state-error-primary,#dc2626)}
 .dshm-audit-title{font-size:14px;font-weight:400;line-height:22px;color:var(--dsw-alias-label-primary,#1f2328)}
 .dshm-audit-desc{font-size:12px;font-weight:400;line-height:18px;color:var(--dsw-alias-label-tertiary,#9ca3af)}
+.dshm-audit-acts{display:flex;align-items:center;gap:8px;margin-top:10px;padding-top:10px;border-top:1px dashed var(--dsw-alias-border-l2,#e5e7eb)}
+.dshm-audit-acts .dshm-btn.danger{font-weight:600}
 .dshm-perm-tags{display:flex;flex-wrap:wrap;gap:6px;margin:6px 0}
 .dshm-top{position:absolute;right:18px;bottom:18px;z-index:20;width:36px;height:36px;border-radius:18px;border:1px solid var(--dsw-alias-border-l2,#e5e7eb);background:var(--dsw-alias-bg-layer-1,#fff);color:var(--dsw-alias-label-secondary,#6b7280);font-size:16px;cursor:pointer;box-shadow:0 4px 14px rgba(0,0,0,.12);display:flex;align-items:center;justify-content:center}
 .dshm-top:hover{color:var(--dsw-alias-state-business-primary,#4f6ef7)}
@@ -387,10 +448,10 @@ const CSS = `
 `
 
 function injectStyles() {
-  if (document.querySelector('style[data-plugin-css="dsh-market/market"]') !== null) return
+  if (document.querySelector('style[data-plugin-css="dsh-plugin-market/market"]') !== null) return
   const tag = document.createElement('style')
-  tag.dataset.plugin = "dshmarket"
-  tag.dataset.pluginCss = 'dsh-market/market'
+  tag.dataset.plugin = "dsh-plugin-market"
+  tag.dataset.pluginCss = 'dsh-plugin-market/market'
   tag.textContent = CSS
   document.head.appendChild(tag)
 }
@@ -573,6 +634,74 @@ function inlineMd(text, prefix) {
   return out
 }
 
+/**
+ * 把 README 里的 HTML（表格/图片/内联标签）按安全白名单解析为 React 元素。
+ * 用浏览器原生 DOMParser 解析（不执行脚本），遍历 DOM 时只保留白名单
+ * 标签与安全属性，避免 XSS。DOMParser 不可用（非浏览器）时降级为纯文本。
+ */
+const SAFE_HTML_TAGS = new Set(['table', 'thead', 'tbody', 'tfoot', 'tr', 'th', 'td', 'img', 'br', 'center', 'div', 'p', 'a', 'strong', 'b', 'em', 'i', 'code', 'kbd', 'sup', 'sub', 'details', 'summary', 'ul', 'ol', 'li', 'span', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'hr', 'blockquote', 'pre'])
+const SAFE_HTML_ATTRS = new Set(['href', 'src', 'width', 'height', 'align', 'colspan', 'rowspan', 'style', 'title', 'alt', 'open'])
+function parseSafeHtml(html) {
+  if (typeof DOMParser === 'undefined') {
+    // 非浏览器降级：去掉标签只留文本
+    return [String(html).replace(/<[^>]*>/g, '')]
+  }
+  const doc = new DOMParser().parseFromString(String(html), 'text/html')
+  const out = []
+  let k = 0
+  const convert = (node) => {
+    const kids = []
+    for (const child of node.childNodes) {
+      if (child.nodeType === 3) {
+        const t = (child.textContent || '').trim()
+        if (t !== '') {
+          // HTML 内的文本也做 inline Markdown（**粗体**、`代码`、[链接]）
+          const inline = inlineMd(t, 'hx' + (k++))
+          kids.push(...(Array.isArray(inline) ? inline : [inline]))
+        }
+      } else if (child.nodeType === 1) {
+        const tag = child.tagName.toLowerCase()
+        if (!SAFE_HTML_TAGS.has(tag)) continue
+        const props = { key: 'h' + (k++) }
+        for (const attr of child.attributes) {
+          const name = attr.name.toLowerCase()
+          const val = attr.value
+          if (name.startsWith('on')) continue
+          if (!SAFE_HTML_ATTRS.has(name)) continue
+          if ((name === 'href' || name === 'src') && /^(javascript:|data:text\/html)/i.test(val)) continue
+          if (name === 'href') { props.href = val; props.target = '_blank'; props.rel = 'noreferrer' }
+          else if (name === 'style') {
+            // style 只保留宽高/对齐等安全子集
+            const safe = val.split(';').map(s => s.trim()).filter(s => /^(width|height|max-width|max-height|text-align|vertical-align|border|padding|margin|background|color|border-radius|font-size|font-weight|line-height)\s*:/i.test(s)).join(';')
+            if (safe !== '') props.style = safe
+          }
+          else props[name] = val
+        }
+        const sub = convert(child)
+        if (tag === 'img') {
+          if (!props.src) continue
+          if (sub.length > 0) props.alt = sub.join(' ')
+          kids.push(h('img', props))
+        } else if (tag === 'br' || tag === 'hr') {
+          kids.push(h(tag, props))
+        } else {
+          kids.push(h(tag, props, ...sub))
+        }
+      }
+    }
+    return kids
+  }
+  for (const c of doc.body.childNodes) {
+    if (c.nodeType === 3) {
+      const t = (c.textContent || '').trim()
+      if (t !== '') out.push(t)
+    } else if (c.nodeType === 1) {
+      out.push(...convert(c))
+    }
+  }
+  return out
+}
+
 function renderMarkdown(md) {
   const lines = String(md).split('\n')
   const blocks = []
@@ -581,8 +710,37 @@ function renderMarkdown(md) {
   const blank = l => /^\s*$/.test(l)
   const isBlockStart = l => /^\s*```/.test(l) || /^#{1,6}\s/.test(l) || /^\s*[-*]\s/.test(l)
     || /^\s*\d+[.)]\s/.test(l) || /^\s*(-{3,}|\*{3,})$/.test(l)
+  const htmlOpen = l => /^\s*<(table|thead|tbody|tr|img|center|div|p|br|details|summary|kbd|sup|sub)/i.test(l)
+  const htmlCloseTag = l => /<\/(table|div|center|details|p)>/i.test(l)
   while (i < lines.length) {
     if (blank(lines[i])) { i++; continue }
+    // HTML 块（README 常见 <table>/<div>）：安全白名单解析。
+    // 表格整块收集；<div> 等容器遇到 Markdown 起始行（标题/列表等）
+    // 就停止，把 Markdown 交给正常渲染（GitHub 也支持 div 内 Markdown）。
+    if (htmlOpen(lines[i])) {
+      const isTable = /^\s*<(table|thead|tbody|tr)/i.test(lines[i])
+      const buf = []
+      while (i < lines.length) {
+        const line = lines[i]
+        if (isTable) {
+          buf.push(line)
+          if (/<\/(table|thead|tbody)>/i.test(line)) { i++; break }
+        } else {
+          // 容器内：遇到 Markdown 起始行（标题/列表等）中断，交给 Markdown 渲染；
+          // 自闭合 HTML（img/br）继续留在块内。
+          const mdStart = isBlockStart(line)
+          const htmlStart = /^\s*<(table|div|img|center|details|h[1-6]|ul|ol|p|pre)/i.test(line)
+          const selfClose = /^\s*<(img|br|hr)\b/i.test(line)
+          if (buf.length > 0 && ((mdStart && !htmlStart) || (htmlStart && !selfClose && !htmlCloseTag(line)))) break
+          buf.push(line)
+          if (htmlCloseTag(line)) { i++; break }
+        }
+        i++
+      }
+      const parsed = parseSafeHtml(buf.join('\n'))
+      if (parsed !== null && parsed.length > 0) blocks.push(h('div', { key: key++, className: 'dshm-readmeHtml' }, parsed))
+      continue
+    }
     if (/^\s*```/.test(lines[i])) {
       const buf = []
       i++
@@ -652,8 +810,6 @@ function MarketSection(props) {
     const s = props.locale.getSnapshot()
     if (s && typeof s.active === 'string') lang = s.active.toLowerCase().startsWith('zh') ? 'zh' : 'en'
   } catch {}
-  const [data, setData] = useState(null)
-  const [loadError, setLoadError] = useState(false)
   const [installed, setInstalled] = useState({})
   const [installedRepos, setInstalledRepos] = useState({})
   const [tab, setTab] = useState(() => {
@@ -662,6 +818,7 @@ function MarketSection(props) {
     return saved || 'discover'
   })
   const [q, setQ] = useState('')
+  const [favorites, setFavorites] = useState([])
   const [confirming, setConfirming] = useState(null)
   const [busyUrl, setBusyUrl] = useState(null)
   const [doneUrls, setDoneUrls] = useState([])
@@ -682,7 +839,6 @@ function MarketSection(props) {
   const [bootId, setBootId] = useState(null)
   const [showTop, setShowTop] = useState(false)
   const [sort, setSort] = useState('hot')
-  const [browseAll, setBrowseAll] = useState(false)
   const [searchResults, setSearchResults] = useState([])
   const [searchQuery, setSearchQuery] = useState('')
   const [searchMeta, setSearchMeta] = useState(null)
@@ -712,7 +868,7 @@ function MarketSection(props) {
   useEffect(() => { sortRef.current = sort }, [sort])
 
   const refreshInstalled = useCallback((force) => {
-    fetch('/dsh-market/installed', { cache: 'no-store' })
+    fetch('/dsh-plugin-market/installed', { cache: 'no-store' })
       .then(res => res.json())
       .then(body => {
         setInstalled(body.installed || {})
@@ -720,14 +876,14 @@ function MarketSection(props) {
         setInstalledRepos(body.repos || {})
       })
       .catch(() => {})
-    fetch('/dsh-market/updates' + (force === true ? '?force=1' : ''), { cache: 'no-store' })
+    fetch('/dsh-plugin-market/updates' + (force === true ? '?force=1' : ''), { cache: 'no-store' })
       .then(res => res.json())
       .then(body => setUpdates(body.updates || {}))
       .catch(() => {})
   }, [])
 
   const refreshEntries = useCallback(() => {
-    fetch('/dsh-market/entries', { cache: 'no-store' })
+    fetch('/dsh-plugin-market/entries', { cache: 'no-store' })
       .then(res => res.json())
       .then(body => setEntries(Array.isArray(body.entries) ? body.entries : []))
       .catch(() => {})
@@ -737,7 +893,7 @@ function MarketSection(props) {
   const doToggle = useCallback((rowId, enable) => {
     setTogglingId(rowId)
     setInstallError(null)
-    fetch('/dsh-market/toggle', {
+    fetch('/dsh-plugin-market/toggle', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ id: rowId, enable }),
@@ -755,13 +911,32 @@ function MarketSection(props) {
       .finally(() => setTogglingId(null))
   }, [])
 
+  /** 拉取我的精选列表。 */
+  const refreshFavorites = useCallback(() => {
+    fetch('/dsh-plugin-market/favorites', { cache: 'no-store' })
+      .then(res => res.json())
+      .then(body => setFavorites(Array.isArray(body.items) ? body.items : []))
+      .catch(() => {})
+  }, [])
+
+  /** 收藏/取消收藏社区插件。 */
+  const toggleFavorite = useCallback((plugin) => {
+    const url = plugin.url
+    const isFav = favorites.some(f => f.url === url)
+    fetch('/dsh-plugin-market/favorites', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(isFav ? { action: 'remove', url } : { action: 'add', plugin }),
+    })
+      .then(res => res.json())
+      .then(body => { if (Array.isArray(body.items)) setFavorites(body.items) })
+      .catch(() => {})
+  }, [favorites])
+
   useEffect(() => {
     injectStyles()
-    fetch('/dsh-market/registry', { cache: 'no-store' })
-      .then(res => { if (!res.ok) throw new Error('HTTP ' + res.status); return res.json() })
-      .then(body => setData(body.registry))
-      .catch(() => setLoadError(true))
-    fetch('/dsh-market/status', { cache: 'no-store' })
+    refreshFavorites()
+    fetch('/dsh-plugin-market/status', { cache: 'no-store' })
       .then(res => res.json())
       .then(status => {
         setEnvReady(status.pnpm !== false)
@@ -772,7 +947,7 @@ function MarketSection(props) {
       .catch(() => {})
     refreshInstalled()
     refreshEntries()
-  }, [refreshInstalled, refreshEntries])
+  }, [refreshInstalled, refreshEntries, refreshFavorites])
 
   // Pending-restart flags survive tab switches and page reloads, scoped to
   // one host process: a different boot id means the restart happened and the
@@ -803,7 +978,7 @@ function MarketSection(props) {
 
   /** Raw GitHub-side page fetch; mutates only the meta ref. */
   const fetchPageRaw = useCallback((query, page) => {
-    const url = '/dsh-market/search?q=' + encodeURIComponent(query) + '&lang=' + lang
+    const url = '/dsh-plugin-market/search?q=' + encodeURIComponent(query) + '&lang=' + lang
       + (query === '' ? '&limit=50' : '&limit=20') + '&page=' + page
       + '&sort=' + (sortRef.current === 'new' ? 'new' : 'hot')
     return fetch(url, { cache: 'no-store' })
@@ -851,26 +1026,15 @@ function MarketSection(props) {
     })
   }, [fetchPageRaw, applySearchMeta])
 
-  // Community search/browse behind the search box; the curated registry stays
-  // the default for an empty query unless "All community" is on.
+  // 发现页 = 社区：输入关键词走 GitHub 实时搜索，空查询浏览整个主题。
   useEffect(() => {
     const query = q.trim()
-    if (query === '' && !browseAll) {
-      setSearchResults([])
-      setSearchMeta(null)
-      searchMetaRef.current = null
-      searchQueryRef.current = ''
-      setSearchQuery('')
-      setSearching(false)
-      setSearchFailed(false)
-      return
-    }
     setSearching(true)
     const timer = setTimeout(() => {
       fetchSearchPage(query, 1).finally(() => setSearching(false))
     }, 350)
     return () => clearTimeout(timer)
-  }, [q, lang, searchNonce, browseAll, sort, fetchSearchPage])
+  }, [q, lang, searchNonce, sort, fetchSearchPage])
 
   /** "Load more": keep fetching GitHub pages until one full page of NEW items
    *  is collected (drift-tolerant); surplus stays buffered for the next click,
@@ -917,7 +1081,7 @@ function MarketSection(props) {
   const fixEnv = useCallback(() => {
     setEnvFixing(true)
     setEnvFailed(false)
-    fetch('/dsh-market/setup-pnpm', { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' })
+    fetch('/dsh-plugin-market/setup-pnpm', { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' })
       .then(res => res.json())
       .then(body => {
         if (body.ok) setEnvReady(true)
@@ -927,17 +1091,89 @@ function MarketSection(props) {
       .finally(() => setEnvFixing(false))
   }, [])
 
-  /** Load a plugin's README into the in-market usage-instructions dialog. */
-  const openReadme = useCallback((name) => {
-    setReadmeView({ name, loading: true })
-    fetch('/dsh-market/readme?name=' + encodeURIComponent(name) + '&lang=' + lang, { cache: 'no-store' })
+  /** Load a plugin's README into the in-market usage-instructions dialog.
+   *  Installed plugins read their local node_modules README; community
+   *  (discover) plugins pass the GitHub URL and the server fetches it.
+   *  只做呈现：初始按界面语言展示，不做 中文/EN 切换按钮——想换语言就点
+   *  README 内容里的语言链接（如「中文」），弹窗内重新加载对应文件。
+   *  force=true（弹窗「刷新」按钮）：跳过缓存强制重拉最新内容。
+   *  简单可靠：查缓存 → 请求 → 显示；失败必清 loading。 */
+  const openReadme = useCallback((name, url, force) => {
+    const key = name + '|' + (url || '')
+    const repoM = url ? /github\.com\/([A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+?)(?:\.git)?\/?$/.exec(url) : null
+    const repo = repoM === null ? '' : repoM[1]
+    const cached = force === true ? undefined : readmeCacheGet(key)
+    if (cached !== undefined) {
+      setReadmeView({ name, url: url || null, repo, loading: false, contentLang: cached.contentLang, content: cached.content, source: cached.source, repaired: cached.repaired === true })
+      return
+    }
+    const qs = url
+      ? '?url=' + encodeURIComponent(url) + '&lang=' + lang + (force === true ? '&fresh=1' : '')
+      : '?name=' + encodeURIComponent(name) + '&lang=' + lang
+    // 重新打开/加载时保留旧内容：加载完成前不闪「未提供 README」占位，
+    // 旧内容保持可见，顶部只显示一条加载行。
+    setReadmeView(prev => prev !== null && prev.name === name && prev.url === (url || null)
+      ? { ...prev, loading: true }
+      : { name, url: url || null, repo, loading: true })
+    fetch('/dsh-plugin-market/readme' + qs, { cache: 'no-store' })
       .then(res => res.json())
       .then(body => {
-        if (body.ok) setReadmeView({ name, content: body.content, source: body.source, repaired: body.repaired === true })
-        else setReadmeView({ name, description: body.description || '' })
+        if (body.ok) {
+          const entry = { contentLang: body.contentLang, content: body.content, source: body.source, repaired: body.repaired === true }
+          readmeCacheSet(key, entry)
+          setReadmeView({ name, url: url || null, repo: body.repo || repo, loading: false, ...entry })
+        } else {
+          setReadmeView({ name, url: url || null, repo, loading: false, description: body.description || '', error: true })
+        }
       })
-      .catch(() => setReadmeView({ name, error: true }))
+      .catch(() => setReadmeView({ name, url: url || null, repo, loading: false, error: true }))
   }, [lang])
+
+  /** README 内容里的语言链接（如「中文」指向 README.zh.md）：点击后
+   *  在弹窗内重新加载该文件，不跳去 GitHub 外链。
+   *  force=true（弹窗「刷新」按钮）：跳过缓存强制重拉最新内容。 */
+  const loadReadmeByPath = useCallback((name, repo, path, force) => {
+    if (repo === '') return
+    const key = name + '|' + repo + '|path:' + path
+    const cached = force === true ? undefined : readmeCacheGet(key)
+    if (cached !== undefined) {
+      setReadmeView(prev => prev === null
+        ? { name, url: null, repo, loading: false, contentLang: cached.contentLang, content: cached.content, source: cached.source, repaired: cached.repaired === true }
+        : { ...prev, repo, loading: false, contentLang: cached.contentLang, content: cached.content, source: cached.source, repaired: cached.repaired === true })
+      return
+    }
+    setReadmeView(prev => prev !== null && prev.name === name
+      ? { ...prev, loading: true }
+      : { name, url: null, repo, loading: true })
+    fetch('/dsh-plugin-market/readme?url=' + encodeURIComponent('https://github.com/' + repo) + '&path=' + encodeURIComponent(path) + (force === true ? '&fresh=1' : ''), { cache: 'no-store' })
+      .then(res => res.json())
+      .then(body => {
+        if (body.ok) {
+          const entry = { contentLang: body.contentLang, content: body.content, source: body.source, repaired: body.repaired === true }
+          readmeCacheSet(key, entry)
+          setReadmeView(prev => prev !== null
+            ? { ...prev, repo: body.repo || repo, loading: false, ...entry }
+            : { name, url: null, repo: body.repo || repo, loading: false, ...entry })
+        } else {
+          setReadmeView(prev => prev !== null
+            ? { ...prev, repo, loading: false, error: true }
+            : { name, url: null, repo, loading: false, error: true })
+        }
+      })
+      .catch(() => setReadmeView(prev => prev !== null
+        ? { ...prev, repo, loading: false, error: true }
+        : { name, url: null, repo, loading: false, error: true }))
+  }, [])
+
+  /** 弹窗「刷新」按钮：绕过两级缓存，强制重拉当前文件的最新内容。 */
+  const refreshReadme = useCallback(() => {
+    if (readmeView === null || readmeView.loading) return
+    if (readmeView.repo !== '' && readmeView.source) {
+      loadReadmeByPath(readmeView.name, readmeView.repo, readmeView.source, true)
+    } else {
+      openReadme(readmeView.name, readmeView.url, true)
+    }
+  }, [readmeView, openReadme, loadReadmeByPath])
 
   /** Hand the plugin's setup off to the Agent: jump to a fresh session with
    *  a pre-filled diagnosis prompt. */
@@ -946,6 +1182,20 @@ function MarketSection(props) {
     const prompt = t('agentHelpPrompt').replace('{name}', name).replace('{spec}', spec || '—')
     if (typeof props.openAgentSession === 'function') props.openAgentSession(prompt)
   }, [installed, t, props.openAgentSession])
+
+  // 卸载确认态：点「卸载」后按钮就地变「确认卸载？」；点击页面其他
+  // 任何地方（不含确认按钮本身）则还原回「卸载」，下次重新确认。
+  useEffect(() => {
+    if (removeArmed === null) return
+    const onDocClick = (e) => {
+      const target = e.target
+      const btn = target && typeof target.closest === 'function' ? target.closest('button') : null
+      if (btn !== null && btn.classList.contains('dshm-armed')) return
+      setRemoveArmed(null)
+    }
+    document.addEventListener('click', onDocClick, true)
+    return () => document.removeEventListener('click', onDocClick, true)
+  }, [removeArmed])
 
   // Recover an install whose HTTP response was lost (page navigated away or
   // the connection dropped): the pending marker survives in sessionStorage and
@@ -956,25 +1206,27 @@ function MarketSection(props) {
   }, [])
 
   useEffect(() => {
-    if (busyUrl === null && updatingName === null) {
+    if (busyUrl === null && updatingName === null && removingName === null) {
       setProgressLine(null)
       return
     }
     const timer = setInterval(() => {
-      fetch('/dsh-market/status', { cache: 'no-store' })
+      fetch('/dsh-plugin-market/status', { cache: 'no-store' })
         .then(res => res.json())
         .then(status => {
           if (status.active) {
             setProgressLine((status.lastLine || '…') + '  (' + status.seconds + 's)')
           } else if (status.auditing === true) {
             setProgressLine(t('auditingPhase'))
-          } else {
+                } else {
             setProgressLine(null)
-            setInstalled(status.installed || {})
+                  setInstalled(status.installed || {})
             const pending = readSession('dshm-pending')
             if (pending !== null && busyUrl !== null) {
-              const nowInstalled = data !== null && data.plugins.some(p =>
-                p.url === busyUrl && isInstalled(p, status.installed || {}))
+              // 安装完成判定：busyUrl 的 owner/repo 出现在 installed 的 spec 里。
+              const gh = /github\.com\/([A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+?)(?:\.git)?\/?$/.exec(busyUrl)
+              const nowInstalled = gh !== null && Object.values(status.installed || {}).some(spec =>
+                String(spec).toLowerCase().includes(('github:' + gh[1]).toLowerCase()))
               if (nowInstalled) {
                 sessionStorage.removeItem('dshm-pending')
                 setDoneUrls(urls => urls.includes(busyUrl) ? urls : urls.concat(busyUrl))
@@ -986,35 +1238,25 @@ function MarketSection(props) {
         .catch(() => {})
     }, 2000)
     return () => clearInterval(timer)
-  }, [busyUrl, updatingName, data, t])
+  }, [busyUrl, updatingName, removingName, t])
 
+  // 发现页结果：live GitHub search/browse（无精选本地目录了）。
   const plugins = useMemo(() => {
     const query = q.trim()
-    if ((browseAll || query !== '') && searchQuery === query) return searchResults
-    if (data === null) return []
-    const needle = query.toLowerCase()
-    const terms = needle === '' ? [] : expandQuery(needle)
-    const list = data.plugins.filter(p => {
-      if (needle === '') return true
-      const cat = data.categories[p.category]
-      const hay = [p.name, p.owner, p.npm || '', descOf(p, 'zh'), descOf(p, 'en'), cat && cat.zh || '', cat && cat.en || ''].join(' ').toLowerCase()
-      return terms.some(term => term !== '' && hay.includes(term))
-    })
-    if (sort === 'hot') return [...list].sort((a, b) => (b.stars ?? -1) - (a.stars ?? -1))
-    if (sort === 'new') return [...list].sort((a, b) => String(b.added).localeCompare(String(a.added)))
-    return list
-  }, [data, q, browseAll, searchResults, searchQuery, sort, lang])
+    if (searchQuery === query) return searchResults
+    return []
+  }, [searchResults, searchQuery, q])
 
-  const doInstall = useCallback((plugin) => {
+  const doInstall = useCallback((plugin, force) => {
     setConfirming(null)
     setInstallError(null)
     setAuditBlock(null)
     setBusyUrl(plugin.url)
     sessionStorage.setItem('dshm-pending', JSON.stringify({ url: plugin.url }))
-    fetch('/dsh-market/install', {
+    fetch('/dsh-plugin-market/install', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ url: plugin.url, community: plugin.curated === false }),
+      body: JSON.stringify({ url: plugin.url, force: force === true }),
     })
       .then(res => res.json().then(body => ({ status: res.status, body })))
       .then(({ status, body }) => {
@@ -1029,8 +1271,10 @@ function MarketSection(props) {
           }
           if (Array.isArray(body.bundleless) && body.bundleless.length > 0) setBundleless(body.bundleless)
           refreshInstalled()
-        } else if (body.audit !== undefined && body.audit !== null) {
-          setAuditBlock({ name: plugin.name, audit: body.audit, hooks: Array.isArray(body.hooks) ? body.hooks : [] })
+        // allowForce 为 true 时显示审计阻止卡（含「仍然安装」按钮）——
+        // 即使审计报告为 null（审计不可用/超时）也要让用户能强制安装。
+        } else if (body.allowForce === true || (body.audit !== undefined && body.audit !== null)) {
+          setAuditBlock({ name: plugin.name, audit: body.audit, hooks: Array.isArray(body.hooks) ? body.hooks : [], plugin })
         } else {
           const text = v => typeof v === 'string' ? v : (v && typeof v.text === 'string') ? v.text : v == null ? '' : JSON.stringify(v)
           const detail = text(body.error) || text(body.stderr) || text(body.stdout) || ('exit ' + body.exitCode)
@@ -1044,22 +1288,22 @@ function MarketSection(props) {
       .finally(() => setBusyUrl(null))
   }, [refreshInstalled, t])
 
-  const doUpdate = useCallback((name) => {
+  const doUpdate = useCallback((name, force) => {
     setInstallError(null)
     setAuditBlock(null)
     setUpdatingName(name)
-    fetch('/dsh-market/update', {
+    fetch('/dsh-plugin-market/update', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ name }),
+      body: JSON.stringify({ name, force: force === true }),
     })
       .then(res => res.json().then(body => ({ status: res.status, body })))
       .then(({ status, body }) => {
         if (status === 200 && body.ok) {
           setUpdatedNames(names => names.concat(name))
           refreshInstalled()
-        } else if (body.audit !== undefined && body.audit !== null) {
-          setAuditBlock({ name, audit: body.audit, hooks: Array.isArray(body.hooks) ? body.hooks : [] })
+        } else if (body.allowForce === true || (body.audit !== undefined && body.audit !== null)) {
+          setAuditBlock({ name, audit: body.audit, hooks: Array.isArray(body.hooks) ? body.hooks : [], update: true })
         } else {
           const text = v => typeof v === 'string' ? v : (v && typeof v.text === 'string') ? v.text : v == null ? '' : JSON.stringify(v)
           const detail = text(body.error) || text(body.stderr) || text(body.stdout) || ('exit ' + body.exitCode)
@@ -1074,7 +1318,7 @@ function MarketSection(props) {
     setRemoveArmed(null)
     setInstallError(null)
     setRemovingName(name)
-    fetch('/dsh-market/uninstall', {
+    fetch('/dsh-plugin-market/uninstall', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ name }),
@@ -1098,20 +1342,18 @@ function MarketSection(props) {
     name => !updatedNames.includes(name) && updates[name] && updates[name].updateAvailable,
   )
 
-  /** Rich card for the curated catalog: avatar, description, stars and the
-   *  install button all visible up front, like the market's original look
-   *  (official tokens for type/sizes/colors). With `showTier`, community
-   *  browse/search results carry a 精选/社区 tag next to the title. */
-  const renderRichCard = (p, showTier) => {
+  /** Rich card for community plugins: avatar, description, stars, favorite
+   *  (★ 收藏/取消) and the install/update/uninstall actions. */
+  const renderRichCard = (p) => {
     const desc = descOf(p, lang)
     const done = doneUrls.includes(p.url) || hotUrls.includes(p.url)
     const already = isInstalled(p, installed)
     const busy = busyUrl === p.url
-    const catLabel = (data !== null && data.categories[p.category] && (data.categories[p.category][lang] || data.categories[p.category].en)) || p.category || ''
+    const isFav = favorites.some(f => f.url === p.url)
     const letter = p.name.replace(/^@[^/]+\//, '').replace(/^dsh[-_]/i, '').charAt(0).toUpperCase() || 'P'
     const inKey = already ? installedKeyOf(p, installed) : null
     const updAvail = inKey !== null && updates[inKey] && updates[inKey].updateAvailable === true && !updatedNames.includes(inKey)
-    const marketSelf = inKey === 'dsh-market' || inKey === 'dshmarket'
+    const marketSelf = inKey === 'dsh-plugin-market' || inKey === 'dsh-plugin-market'
     return h('div', { key: p.url, className: 'dshm-richCard' },
       h('div', { className: 'dshm-richTop' },
         h('div', { className: 'dshm-av', style: { background: avatarColor(p.name) } }, letter),
@@ -1119,9 +1361,11 @@ function MarketSection(props) {
           h('div', { className: 'dshm-richTitle', title: p.name }, p.name),
           h('div', { className: 'dshm-richMeta' }, p.owner,
             typeof p.stars === 'number' && ' · ★ ' + p.stars)),
-        showTier && (p.curated === false
-          ? h('span', { className: 'dshm-configTag' }, t('communityBadge'))
-          : h('span', { className: 'dshm-configTag on' }, t('curatedTag'))),
+        h('button', {
+          className: 'dshm-btn ghost' + (isFav ? ' fav' : ''),
+          title: isFav ? t('favRemove') : t('favAdd'),
+          onClick: () => toggleFavorite(p),
+        }, isFav ? '★' : '☆'),
         done
           ? h('span', { className: 'dshm-btn done' }, t('installedBadge'))
           : already
@@ -1135,96 +1379,104 @@ function MarketSection(props) {
                 !marketSelf && (removingName === inKey
                   ? h('button', { className: 'dshm-btn danger busy', disabled: true }, t('uninstalling'))
                   : removeArmed === inKey
-                    ? h('button', {
-                        className: 'dshm-btn danger armed',
-                        onClick: () => doUninstall(inKey),
-                        onMouseLeave: () => setRemoveArmed(null),
-                      }, t('confirmRemove'))
+                    ? h('button', { className: 'dshm-btn danger armed dshm-armed', onClick: () => doUninstall(inKey) }, t('confirmRemove'))
                     : h('button', {
                         className: 'dshm-btn danger',
                         disabled: busyUrl !== null || updatingName !== null || removingName !== null,
                         onClick: () => setRemoveArmed(inKey),
                       }, t('uninstall'))))
             : busy
-              ? h('button', { className: 'dshm-btn primary busy', disabled: true }, t('installing'))
+              ? h('button', { className: 'dshm-btn primary busy', disabled: true },
+                  t('installing'))
               : h('button', {
                   className: 'dshm-btn primary',
-                  disabled: busyUrl !== null || !envReady || (p.curated === false && !gateOn),
-                  title: (p.curated === false && !gateOn) ? t('auditGateOff') : undefined,
+                  disabled: busyUrl !== null || !envReady || !gateOn,
+                  title: !gateOn ? t('auditGateOff') : undefined,
                   onClick: () => setConfirming(p),
                 }, t('install'))),
       h('div', { className: 'dshm-richDesc', title: desc }, desc),
-      busy && h('div', { className: 'dshm-progress' },
+      (busy || (inKey !== null && removingName === inKey)) && h('div', { className: 'dshm-progress' },
         h('span', { className: 'dshm-spin' }),
         h('code', { className: 'dshm-grow' }, progressLine || t('progressHint'))),
       h('div', { className: 'dshm-richFoot' },
-        catLabel !== '' && h('span', { className: 'dshm-configTag' }, catLabel),
+        h('button', { className: 'dshm-btn ghost', onClick: () => openReadme(p.name, p.url) }, t('readme')),
         h('span', { className: 'dshm-grow' }),
         h('a', { className: 'dshm-src', href: p.url, target: '_blank', rel: 'noreferrer' }, t('viewSource'))))
   }
 
+  /** 发现页排序权重（打开页面即生效，无视热门/最新排序）：
+   *  0 = 正在安装/更新/卸载 + 审计被阻止待决定（最前）
+   *  → 1 = 已安装/可更新 → 2 = 未安装；同权重内保持原顺序。 */
+  const activeRank = (p) => {
+    // 只有「进行中/待决定」的置顶（正在安装/更新/卸载、审计被阻止待决定）；
+    // 已安装的和未安装的一样，保持原来的热门/最新顺序。
+    if (busyUrl === p.url) return 0
+    if (auditBlock !== null && auditBlock.plugin && auditBlock.plugin.url === p.url) return 0
+    const inKey = installedKeyOf(p, installed)
+    if (inKey !== null && (updatingName === inKey || removingName === inKey)) return 0
+    return 1
+  }
+
   const query = q.trim()
-  const browsing = browseAll && query === ''
-  const searchActive = browseAll || query !== ''
+  const browsing = query === ''
 
   const discoverBody = (() => {
-    if (searchActive) {
-      if (searching || searchQuery !== query) {
-        return h('div', { className: 'dshm-loading' }, h('span', { className: 'dshm-spin' }), t('searching'))
-      }
-      if (searchFailed && searchResults.length === 0) {
-        return h('div', { className: 'dshm-empty' }, t('searchFail'), ' ',
-          h('button', { className: 'dshm-btn ghost', onClick: () => setSearchNonce(n => n + 1) }, t('retry')))
-      }
-      return h(React.Fragment, null,
-        h('div', { className: 'dshm-catalogHeading' },
-          h('h3', null, browsing ? t('browseAll') : t('searchResults')),
-          h('span', null, searchResults.length + (searchMeta && searchMeta.total ? ' / ' + searchMeta.total : '')),
-          browsing && h('span', { className: 'dshm-configTag' }, t('mixedNote')),
-          h('div', { className: 'dshm-headingSort' },
-            ['hot', 'new'].map(key => h('button', {
-              key,
-              className: sort === key ? 'on' : '',
-              onClick: () => setSort(key),
-            }, t(key === 'hot' ? 'sortHot' : 'sortNew'))))),
-        searchMeta && searchMeta.rateLimited && h('div', { className: 'dshm-note' }, '⚠️ ' + t('searchRateLimited')
-          + (searchMeta.retryAfterSeconds ? ' (~' + Math.max(1, Math.ceil(searchMeta.retryAfterSeconds / 60)) + ' min)' : '')),
-        searchResults.length > 0 && h('div', { className: 'dshm-note' },
-          (browsing ? t('browseAllHint') : t('searchNote'))
-          + (searchMeta && searchMeta.translatedTerms && searchMeta.translatedTerms.length > 0
-            ? ' · ' + t('translatedAs') + ': ' + searchMeta.translatedTerms.slice(0, 4).join(', ')
-            : '')),
-        searchResults.length === 0
-          ? h('div', { className: 'dshm-empty' }, t('empty'))
-          : h('div', { className: 'dshm-cards' }, searchResults.map(p => renderRichCard(p, true))),
-        searchMeta && searchMeta.hasMore && h('div', { className: 'dshm-more' },
-          h('button', { className: 'dshm-btn ghost', disabled: loadingMore, onClick: loadMore },
-            loadingMore ? t('loadingMore') : t('more') + ' · ' + searchResults.length + ' / ' + searchMeta.total)),
-        searchMeta && !searchMeta.hasMore && searchMeta.total > searchMeta.fetchable && searchMeta.fetchable > 0
-          && h('div', { className: 'dshm-note' }, t('githubCapNote')
-            .replace('{fetchable}', String(searchMeta.fetchable))
-            .replace('{total}', String(searchMeta.total))))
+    if (searching || searchQuery !== query) {
+      return h('div', { className: 'dshm-loading' }, h('span', { className: 'dshm-spin' }), t('searching'))
     }
-    if (loadError) return h('div', { className: 'dshm-empty' }, t('loadFail'))
-    if (data === null) return h('div', { className: 'dshm-loading' }, h('span', { className: 'dshm-spin' }), t('loading'))
+    if (searchFailed && searchResults.length === 0) {
+      return h('div', { className: 'dshm-empty' }, t('searchFail'), ' ',
+        h('button', { className: 'dshm-btn ghost', onClick: () => setSearchNonce(n => n + 1) }, t('retry')))
+    }
     return h(React.Fragment, null,
       h('div', { className: 'dshm-catalogHeading' },
-        h('h3', null, t('tabDiscover')),
-        h('span', null, plugins.length),
+        h('h3', null, browsing ? t('browseAll') : t('searchResults')),
+        h('span', null, searchResults.length + (searchMeta && searchMeta.total ? ' / ' + searchMeta.total : '')),
         h('div', { className: 'dshm-headingSort' },
           ['hot', 'new'].map(key => h('button', {
             key,
             className: sort === key ? 'on' : '',
             onClick: () => setSort(key),
           }, t(key === 'hot' ? 'sortHot' : 'sortNew'))))),
-      plugins.length === 0
-        ? h('div', { className: 'dshm-empty' }, t('empty'))
-        : h('div', { className: 'dshm-cards' }, plugins.map(renderRichCard)))
+      searchMeta && searchMeta.rateLimited && h('div', { className: 'dshm-note' }, '⚠️ ' + t('searchRateLimited')
+        + (searchMeta.retryAfterSeconds ? ' (~' + Math.max(1, Math.ceil(searchMeta.retryAfterSeconds / 60)) + ' min)' : '')),
+      searchResults.length > 0 && h('div', { className: 'dshm-note' },
+        (browsing ? t('browseAllHint') : t('searchNote'))
+        + (searchMeta && searchMeta.translatedTerms && searchMeta.translatedTerms.length > 0
+          ? ' · ' + t('translatedAs') + ': ' + searchMeta.translatedTerms.slice(0, 4).join(', ')
+          : '')),
+      searchResults.length === 0
+        ? h('div', { className: 'dshm-empty' },
+            searchMeta && searchMeta.rateLimited ? t('rateLimitedEmpty') : t('empty'))
+        : h('div', { className: 'dshm-cards' }, searchResults.slice().sort((a, b) => activeRank(a) - activeRank(b)).map(p => renderRichCard(p))),
+      searchMeta && searchMeta.hasMore && h('div', { className: 'dshm-more' },
+        h('button', { className: 'dshm-btn ghost', disabled: loadingMore, onClick: loadMore },
+          loadingMore ? t('loadingMore') : t('more') + ' · ' + searchResults.length + ' / ' + searchMeta.total)),
+      searchMeta && !searchMeta.hasMore && searchMeta.total > searchMeta.fetchable && searchMeta.fetchable > 0
+        && h('div', { className: 'dshm-note' }, t('githubCapNote')
+          .replace('{fetchable}', String(searchMeta.fetchable))
+          .replace('{total}', String(searchMeta.total))))
   })()
 
+  /** 进行中的操作置顶，见上方 activeRank；这里对已安装列表同样处理。 */
   const installedEntries = Object.entries(installed)
-  installedEntries.sort((a, b) => (installedTimes[b[0]]?.installed ?? 0) - (installedTimes[a[0]]?.installed ?? 0))
-  if (!installedTimeDesc) installedEntries.reverse()
+  installedEntries.sort((a, b) => {
+    const actA = (a[0] === updatingName || a[0] === removingName) ? 1 : 0
+    const actB = (b[0] === updatingName || b[0] === removingName) ? 1 : 0
+    if (actA !== actB) return actB - actA
+    const ta = installedTimes[a[0]]?.installed ?? 0
+    const tb = installedTimes[b[0]]?.installed ?? 0
+    return installedTimeDesc ? tb - ta : ta - tb
+  })
+
+  // 我的精选：收藏的社区插件，同样可安装/更新/卸载。
+  const favoritesBody = favorites.length === 0
+    ? h('div', { className: 'dshm-empty' }, t('favEmpty'))
+    : h(React.Fragment, null,
+        h('div', { className: 'dshm-catalogHeading' },
+          h('h3', null, t('tabFavorites')),
+          h('span', null, favorites.length)),
+        h('div', { className: 'dshm-cards' }, favorites.slice().sort((a, b) => activeRank(a) - activeRank(b)).map(p => renderRichCard(p))))
 
   const installedBody = installedEntries.length === 0
     ? h('div', { className: 'dshm-empty' }, t('installedEmpty'))
@@ -1239,22 +1491,19 @@ function MarketSection(props) {
               onClick: () => setInstalledTimeDesc(v => !v),
             }, t('sortTime') + (installedTimeDesc ? ' ↓' : ' ↑')))),
         installedEntries.map(([name, spec]) => {
-          const entry = data === null ? undefined : data.plugins.find(p => p.name === name
-            || (repoOf(p.url) !== null && String(spec).toLowerCase().includes(('github:' + repoOf(p.url)).toLowerCase())))
           const status = updates[name]
           const version = status && status.version ? 'v' + status.version : ''
           const specText = String(spec)
           const ghSpec = /^github:([A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+?)(?:#|$)/.exec(specText)
-          const repoUrl = entry !== undefined ? entry.url : ghSpec !== null ? 'https://github.com/' + ghSpec[1] : null
           const repoInfo = installedRepos[name]
-          const gitUrl = repoUrl !== null ? repoUrl : typeof repoInfo === 'string' && repoInfo !== '' ? repoInfo : null
+          const gitUrl = ghSpec !== null ? 'https://github.com/' + ghSpec[1] : typeof repoInfo === 'string' && repoInfo !== '' ? repoInfo : null
           const updAvailable = !!(status && status.updateAvailable)
           const timeInfo = installedTimes[name]
           const timeTitle = (timeInfo?.installed || timeInfo?.updated)
             ? t('installedAt') + ': ' + (fmtTime(timeInfo.installed) || '—') + '\n' + t('updatedAt') + ': ' + (fmtTime(timeInfo.updated) || '—')
             : ''
           const loaderRow = entries.find(r => r.name === name)
-          const isMarket = name === 'dsh-market' || name === 'dshmarket'
+          const isMarket = name === 'dsh-plugin-market' || name === 'dsh-plugin-market'
           const isPatchRow = specText.startsWith('patch:')
           const rowDisabled = loaderRow !== undefined && loaderRow.disabled === true
           return h('div', {
@@ -1273,11 +1522,10 @@ function MarketSection(props) {
               gitUrl !== null
                 ? h('a', { className: 'dshm-spec dshm-src', href: gitUrl, target: '_blank', rel: 'noreferrer' }, specText)
                 : h('span', { className: 'dshm-spec' }, specText),
-              entry !== undefined && h('div', { className: 'dshm-irowDesc' }, descOf(entry, lang)),
               selectedName === name && h('div', { className: 'dshm-irowTime' },
                 h('div', { className: 'dshm-irowTimeRow' }, t('installedAt') + ': ' + (fmtTime(timeInfo?.installed) || '—')),
                 h('div', { className: 'dshm-irowTimeRow' }, t('updatedAt') + ': ' + (fmtTime(timeInfo?.updated) || '—'))),
-              updatingName === name && h('div', { className: 'dshm-progress' },
+              (updatingName === name || removingName === name) && h('div', { className: 'dshm-progress' },
                 h('span', { className: 'dshm-spin' }),
                 h('code', { className: 'dshm-grow' }, progressLine || t('progressHint')))),
             h('span', { className: 'dshm-grow' }),
@@ -1303,15 +1551,11 @@ function MarketSection(props) {
               disabled: updatingName !== null || busyUrl !== null,
               onClick: () => doUpdate(name),
             }, t('update')),
-            name !== 'dsh-market' && name !== 'dshmarket' && (
+            name !== 'dsh-plugin-market' && name !== 'dsh-plugin-market' && (
               removingName === name
                 ? h('button', { className: 'dshm-btn danger busy', disabled: true }, t('uninstalling'))
                 : removeArmed === name
-                  ? h('button', {
-                      className: 'dshm-btn danger armed',
-                      onClick: () => doUninstall(name),
-                      onMouseLeave: () => setRemoveArmed(null),
-                    }, t('confirmRemove'))
+                  ? h('button', { className: 'dshm-btn danger armed dshm-armed', onClick: () => doUninstall(name) }, t('confirmRemove'))
                   : h('button', {
                       className: 'dshm-btn danger',
                       disabled: removingName !== null || busyUrl !== null || updatingName !== null,
@@ -1358,15 +1602,30 @@ function MarketSection(props) {
             h('h3', null, t('readme') + ' · ' + readmeView.name + (readmeView.source ? ' — ' + readmeView.source : '')),
             h('span', { className: 'dshm-grow' }),
             readmeView.repaired && h('span', { className: 'dshm-configTag', style: { color: 'var(--dsw-alias-state-warn-primary,#b45309)' }, title: t('readmeRepairedHint') }, t('readmeRepaired')),
+            h('button', { className: 'dshm-btn ghost', onClick: refreshReadme, disabled: readmeView.loading, title: t('readmeRefreshHint') }, '↻'),
             h('button', { className: 'dshm-btn ghost', onClick: () => setReadmeView(null) }, '✕')),
-          h('div', { className: 'dshm-readme' },
-            readmeView.loading
-              ? h('div', { className: 'dshm-loading' }, h('span', { className: 'dshm-spin' }))
-              : readmeView.error
-                ? h('div', { className: 'dshm-empty' }, t('readmeFail'))
-                : readmeView.content
-                  ? renderMarkdown(readmeView.content)
-                  : h('div', { className: 'dshm-empty' }, t('readmeEmpty') + (readmeView.description ? ' — ' + readmeView.description : '')))))
+          h('div', {
+            className: 'dshm-readme',
+            onClick: e => {
+              // README 内容里的语言链接（如「中文」→ README.zh.md）：同仓库
+              // 的 blob 链接点击后在弹窗内重新加载对应文件，不跳外链；
+              // 其余链接保持 renderMarkdown 默认的新标签打开。
+              const target = e.target
+              const a = target && typeof target.closest === 'function' ? target.closest('a') : null
+              if (a === null) return
+              const href = a.getAttribute('href') || ''
+              const m = /github\.com\/([A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+?)\/blob\/[A-Za-z0-9_.-]+\/([^#?]+)$/i.exec(href)
+              if (m === null || readmeView.repo === '' || m[1] !== readmeView.repo || !/\.(md|markdown)$/i.test(m[2])) return
+              e.preventDefault()
+              loadReadmeByPath(readmeView.name, readmeView.repo, decodeURIComponent(m[2]))
+            },
+          },
+            readmeView.loading && h('div', { className: 'dshm-readmeLoading' }, h('span', { className: 'dshm-spin' }), t('loading')),
+            readmeView.error && !readmeView.content
+              ? h('div', { className: 'dshm-empty' }, t('readmeFail'))
+              : readmeView.content
+                ? renderMarkdown(readmeView.content)
+                : !readmeView.loading && h('div', { className: 'dshm-empty' }, t('readmeEmpty') + (readmeView.description ? ' — ' + readmeView.description : '')))))
     : null
 
   return h('div', { className: 'dshm-root' },
@@ -1374,7 +1633,7 @@ function MarketSection(props) {
       h('div', { style: { display: 'flex', alignItems: 'center', gap: '10px' } },
         h('h2', { className: 'dshm-title' }, t('nav')),
         (() => {
-          const self = installed['dshmarket'] !== undefined ? 'dshmarket' : 'dsh-market'
+          const self = installed['dsh-plugin-market'] !== undefined ? 'dsh-plugin-market' : 'dsh-plugin-market'
           return updates[self] && updates[self].updateAvailable && !updatedNames.includes(self)
             && h('button', {
               className: 'dshm-btn upd',
@@ -1385,21 +1644,20 @@ function MarketSection(props) {
         })()),
       h('div', { className: 'dshm-sub' },
         t('subtitle'), ' · ',
-        h('a', { className: 'dshm-src', href: '/dsh-market/logs', download: 'dsh-market-log.txt' }, t('exportLog'))),
+        h('a', { className: 'dshm-src', href: '/dsh-plugin-market/logs', download: 'dsh-plugin-market-log.txt' }, t('exportLog'))),
       h('label', { className: 'dshm-search' },
         searchIcon(),
         h('input', {
           type: 'search',
-          placeholder: t('searchPh'),
+          placeholder: t('searchPhCommunity'),
           value: q,
           onChange: e => setQ(e.target.value),
-          'aria-label': t('searchPh'),
+          'aria-label': t('searchPhCommunity'),
         })),
-      tab === 'discover' && h('div', { className: 'dshm-browse', title: t('browseAllHint') },
-        h('button', { className: !browseAll ? 'on' : '', onClick: () => setBrowseAll(false) }, t('browseCurated')),
-        h('button', { className: browseAll ? 'on' : '', onClick: () => setBrowseAll(true) }, t('browseAll'))),
       h('div', { className: 'dshm-tabs' },
         h('button', { className: 'dshm-tab' + (tab === 'discover' ? ' on' : ''), onClick: () => setTab('discover') }, t('tabDiscover')),
+        h('button', { className: 'dshm-tab' + (tab === 'favorites' ? ' on' : ''), onClick: () => { setTab('favorites'); refreshFavorites() } },
+          t('tabFavorites') + (favorites.length > 0 ? ' (' + favorites.length + ')' : '')),
         h('button', { className: 'dshm-tab' + (tab === 'installed' ? ' on' : ''), onClick: () => { setTab('installed'); refreshInstalled(true) } },
           t('tabInstalled') + (Object.keys(installed).length > 0 ? ' (' + Object.keys(installed).length + ')' : ''),
           hasUpdates && h('span', { className: 'dshm-dot' })))),
@@ -1463,7 +1721,20 @@ function MarketSection(props) {
                   h('code', { className: 'dshm-entryValue' }, (f.file || '?') + (f.line != null ? ':' + f.line : '')),
                   ' ', String(f.evidence || f.detail || '').slice(0, 160))))))
         : h('div', { className: 'dshm-audit-desc', style: { marginTop: '6px' } }, t('auditNoFindings')),
-      h('div', { className: 'dshm-audit-desc', style: { marginTop: '6px' } }, t('auditReviewHint'))),
+      h('div', { className: 'dshm-audit-desc', style: { marginTop: '6px' } }, t('auditReviewHint')),
+      (auditBlock.plugin || auditBlock.update) && h('div', { className: 'dshm-audit-acts' },
+        auditBlock.confirming
+          ? h(React.Fragment, null,
+              h('button', {
+                className: 'dshm-btn danger armed',
+                onClick: () => auditBlock.update
+                  ? doUpdate(auditBlock.name, true)
+                  : doInstall(auditBlock.plugin, true),
+              }, t('forceInstallConfirm')),
+              h('button', { className: 'dshm-btn ghost', onClick: () => setAuditBlock({ ...auditBlock, confirming: false }) }, t('cancel')))
+          : h(React.Fragment, null,
+              h('button', { className: 'dshm-btn danger', onClick: () => setAuditBlock({ ...auditBlock, confirming: true }) }, auditBlock.update ? t('forceUpdate') : t('forceInstall')),
+              h('button', { className: 'dshm-btn ghost', onClick: () => setAuditBlock(null) }, t('cancel'))))),
     installError !== null && h('div', { className: 'dshm-err' }, installError),
     h('div', {
       className: 'dshm-body',
@@ -1471,16 +1742,18 @@ function MarketSection(props) {
       onScroll: e => setShowTop(e.currentTarget.scrollTop > 400),
     },
       h('div', { className: 'dshm-bodyInner' },
-        tab === 'discover' ? discoverBody : installedBody)),
+        tab === 'discover' ? discoverBody
+          : tab === 'favorites' ? favoritesBody
+            : installedBody)),
     showTopEl,
     confirmModalEl,
     readmeModalEl)
 }
 
-exports.name = 'dsh-market'
+exports.name = 'dsh-plugin-market'
 exports.inject = ['slots', 'locale']
 exports.apply = function apply(ctx) {
-  ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'dsh-market: dictionaries')
+  ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'dsh-plugin-market: dictionaries')
   const t = ctx.locale.bind(NS)
 
   /** Close settings, jump to a fresh session and prefill its composer with
@@ -1546,8 +1819,8 @@ exports.apply = function apply(ctx) {
   }
   ctx.slots.inject('shell.overlay', () => ctx.slots.register({
     name: 'shell.overlay',
-    id: 'dsh-market-toast',
-    label: () => 'dsh-market',
+    id: 'dsh-plugin-market-toast',
+    label: () => 'DSH-Plugin-Market',
   }, InstallToast))
 }
 
