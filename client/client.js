@@ -1372,7 +1372,7 @@ function MarketSection(props) {
               className: 'dshm-btn ghost' + (readmeView.lang !== 'zh' ? ' on' : ''),
               onClick: () => openReadme(readmeView.name, readmeView.url, 'en'),
               disabled: readmeView.loading,
-            }, 'English'),
+            }, 'EN'),
             readmeView.repaired && h('span', { className: 'dshm-configTag', style: { color: 'var(--dsw-alias-state-warn-primary,#b45309)' }, title: t('readmeRepairedHint') }, t('readmeRepaired')),
             h('button', { className: 'dshm-btn ghost', onClick: () => setReadmeView(null) }, '✕')),
           h('div', { className: 'dshm-readme' },
