@@ -1070,29 +1070,44 @@ function MarketSection(props) {
   /** Load a plugin's README into the in-market usage-instructions dialog.
    *  Installed plugins read their local node_modules README; community
    *  (discover) plugins pass the GitHub URL and the server fetches it.
-   *  `wantLang` switches the displayed language inside the dialog. */
+   *  `wantLang` switches the displayed language inside the dialog.
+   *  打开时并行预取两个语言并缓存，切换 zh/en 直接秒开。 */
   const openReadme = useCallback((name, url, wantLang) => {
     const rlang = wantLang || lang
-    // 已加载过的语言直接秒开，不再请求（切换 zh/en 时第二次立即可用）
-    const cached = readmeCache.get(name + '|' + (url || '') + '|' + rlang)
-    if (cached !== undefined) {
-      setReadmeView({ name, url: url || null, lang: rlang, contentLang: cached.contentLang, content: cached.content, source: cached.source, repaired: cached.repaired === true })
-      return
+    // 拉取指定语言并写入缓存；返回缓存条目或 null。
+    const fetchLang = (l) => {
+      const key = name + '|' + (url || '') + '|' + l
+      const cached = readmeCache.get(key)
+      if (cached !== undefined) return Promise.resolve(cached)
+      const qs = url
+        ? '?url=' + encodeURIComponent(url) + '&lang=' + l
+        : '?name=' + encodeURIComponent(name) + '&lang=' + l
+      return fetch('/dsh-plugin-market/readme' + qs, { cache: 'no-store' })
+        .then(res => res.json())
+        .then(body => {
+          if (body.ok) {
+            const entry = { contentLang: body.contentLang, content: body.content, source: body.source, repaired: body.repaired === true }
+            readmeCache.set(key, entry)
+            return entry
+          }
+          return null
+        })
+        .catch(() => null)
     }
-    const qs = url
-      ? '?url=' + encodeURIComponent(url) + '&lang=' + rlang
-      : '?name=' + encodeURIComponent(name) + '&lang=' + rlang
-    setReadmeView(prev => ({ name, url: url || null, lang: rlang, loading: true, ...(prev && prev.name === name ? { content: prev.content, source: prev.source } : {}) }))
-    fetch('/dsh-plugin-market/readme' + qs, { cache: 'no-store' })
-      .then(res => res.json())
-      .then(body => {
-        if (body.ok) {
-          readmeCache.set(name + '|' + (url || '') + '|' + rlang, { contentLang: body.contentLang, content: body.content, source: body.source, repaired: body.repaired === true })
-          setReadmeView({ name, url: url || null, lang: rlang, contentLang: body.contentLang, content: body.content, source: body.source, repaired: body.repaired === true })
-        }
-        else setReadmeView({ name, url: url || null, lang: rlang, description: body.description || '' })
-      })
-      .catch(() => setReadmeView(prev => ({ name, url: url || null, lang: rlang, error: true, ...(prev && prev.name === name ? { content: prev.content, source: prev.source } : {}) })))
+    // 当前语言：优先缓存秒开，否则加载中展示。
+    const cachedNow = readmeCache.get(name + '|' + (url || '') + '|' + rlang)
+    if (cachedNow !== undefined) {
+      setReadmeView({ name, url: url || null, lang: rlang, contentLang: cachedNow.contentLang, content: cachedNow.content, source: cachedNow.source, repaired: cachedNow.repaired === true })
+    } else {
+      setReadmeView(prev => ({ name, url: url || null, lang: rlang, loading: true, ...(prev && prev.name === name ? { content: prev.content, source: prev.source } : {}) }))
+    }
+    fetchLang(rlang).then(entry => {
+      if (entry !== null) setReadmeView({ name, url: url || null, lang: rlang, contentLang: entry.contentLang, content: entry.content, source: entry.source, repaired: entry.repaired === true })
+      else setReadmeView(prev => ({ name, url: url || null, lang: rlang, description: '', ...(prev && prev.name === name ? { content: prev.content, source: prev.source } : {}) }))
+    })
+    // 预取另一种语言（切过去时秒开），失败静默。
+    const other = rlang === 'zh' ? 'en' : 'zh'
+    fetchLang(other)
   }, [lang])
 
   /** Hand the plugin's setup off to the Agent: jump to a fresh session with
