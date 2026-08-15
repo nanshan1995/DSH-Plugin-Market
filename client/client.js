@@ -60,8 +60,6 @@ const zh = {
   patchLoaded: 'patch 行加载',
   readmeEmpty: '该插件未提供 README 使用说明',
   readmeFail: '使用说明加载失败',
-  readmeNoZh: '未找到该插件的中文版 README，当前显示英文',
-  readmeNoEn: '未找到该插件的英文版 README，当前显示中文',
   readmeRepaired: '已修复乱码',
   readmeRepairedHint: '该 README 原文件编码已损坏（双重 GB18030 乱码），已自动还原为可读文本；个别已被损坏的位置显示为「?」。',
   disable: '停用',
@@ -188,8 +186,6 @@ const en = {
   patchLoaded: 'patch row',
   readmeEmpty: 'No README provided for this plugin',
   readmeFail: 'Failed to load the README',
-  readmeNoZh: 'No Chinese README found for this plugin — showing English',
-  readmeNoEn: 'No English README found for this plugin — showing Chinese',
   readmeRepaired: 'encoding repaired',
   readmeRepairedHint: 'This README shipped with corrupted encoding (double GB18030 mojibake) and was restored to readable text; spots already destroyed upstream show as "?".',
   disable: 'Disable',
@@ -1075,39 +1071,74 @@ function MarketSection(props) {
   /** Load a plugin's README into the in-market usage-instructions dialog.
    *  Installed plugins read their local node_modules README; community
    *  (discover) plugins pass the GitHub URL and the server fetches it.
-   *  `wantLang` switches the displayed language inside the dialog.
-   *  简单可靠：查缓存 → 请求 → 显示；失败必清 loading，按钮不卡死。 */
-  const openReadme = useCallback((name, url, wantLang) => {
-    const rlang = wantLang || lang
-    const key = name + '|' + (url || '') + '|' + rlang
+   *  只做呈现：初始按界面语言展示，不做 中文/EN 切换按钮——想换语言就点
+   *  README 内容里的语言链接（如「中文」），弹窗内重新加载对应文件。
+   *  简单可靠：查缓存 → 请求 → 显示；失败必清 loading。 */
+  const openReadme = useCallback((name, url) => {
+    const key = name + '|' + (url || '')
+    const repoM = url ? /github\.com\/([A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+?)(?:\.git)?\/?$/.exec(url) : null
+    const repo = repoM === null ? '' : repoM[1]
     const cached = readmeCache.get(key)
     if (cached !== undefined) {
-      setReadmeView({ name, url: url || null, lang: rlang, loading: false, contentLang: cached.contentLang, content: cached.content, source: cached.source, repaired: cached.repaired === true, notice: cached.notice || null })
+      setReadmeView({ name, url: url || null, repo, loading: false, contentLang: cached.contentLang, content: cached.content, source: cached.source, repaired: cached.repaired === true })
       return
     }
     const qs = url
-      ? '?url=' + encodeURIComponent(url) + '&lang=' + rlang
-      : '?name=' + encodeURIComponent(name) + '&lang=' + rlang
-    // 切换语言时保留旧内容：加载完成前不闪「未提供 README」占位，
+      ? '?url=' + encodeURIComponent(url) + '&lang=' + lang
+      : '?name=' + encodeURIComponent(name) + '&lang=' + lang
+    // 重新打开/加载时保留旧内容：加载完成前不闪「未提供 README」占位，
     // 旧内容保持可见，顶部只显示一条加载行。
     setReadmeView(prev => prev !== null && prev.name === name && prev.url === (url || null)
-      ? { ...prev, lang: rlang, loading: true, notice: null }
-      : { name, url: url || null, lang: rlang, loading: true })
+      ? { ...prev, loading: true }
+      : { name, url: url || null, repo, loading: true })
     fetch('/dsh-plugin-market/readme' + qs, { cache: 'no-store' })
       .then(res => res.json())
       .then(body => {
         if (body.ok) {
-          // 请求语言与实际内容语言不符时提示（服务端已尽力找过目标语言）。
-          const notice = body.contentLang === rlang ? null : (rlang === 'zh' ? t('readmeNoZh') : t('readmeNoEn'))
-          const entry = { contentLang: body.contentLang, content: body.content, source: body.source, repaired: body.repaired === true, notice }
+          const entry = { contentLang: body.contentLang, content: body.content, source: body.source, repaired: body.repaired === true }
           readmeCache.set(key, entry)
-          setReadmeView({ name, url: url || null, lang: rlang, loading: false, ...entry })
+          setReadmeView({ name, url: url || null, repo: body.repo || repo, loading: false, ...entry })
         } else {
-          setReadmeView({ name, url: url || null, lang: rlang, loading: false, description: body.description || '', error: true })
+          setReadmeView({ name, url: url || null, repo, loading: false, description: body.description || '', error: true })
         }
       })
-      .catch(() => setReadmeView({ name, url: url || null, lang: rlang, loading: false, error: true }))
+      .catch(() => setReadmeView({ name, url: url || null, repo, loading: false, error: true }))
   }, [lang])
+
+  /** README 内容里的语言链接（如「中文」指向 README.zh.md）：点击后
+   *  在弹窗内重新加载该文件，不跳去 GitHub 外链。 */
+  const loadReadmeByPath = useCallback((name, repo, path) => {
+    if (repo === '') return
+    const key = name + '|' + repo + '|path:' + path
+    const cached = readmeCache.get(key)
+    if (cached !== undefined) {
+      setReadmeView(prev => prev === null
+        ? { name, url: null, repo, loading: false, contentLang: cached.contentLang, content: cached.content, source: cached.source, repaired: cached.repaired === true }
+        : { ...prev, repo, loading: false, contentLang: cached.contentLang, content: cached.content, source: cached.source, repaired: cached.repaired === true })
+      return
+    }
+    setReadmeView(prev => prev !== null && prev.name === name
+      ? { ...prev, loading: true }
+      : { name, url: null, repo, loading: true })
+    fetch('/dsh-plugin-market/readme?url=' + encodeURIComponent('https://github.com/' + repo) + '&path=' + encodeURIComponent(path), { cache: 'no-store' })
+      .then(res => res.json())
+      .then(body => {
+        if (body.ok) {
+          const entry = { contentLang: body.contentLang, content: body.content, source: body.source, repaired: body.repaired === true }
+          readmeCache.set(key, entry)
+          setReadmeView(prev => prev !== null
+            ? { ...prev, repo: body.repo || repo, loading: false, ...entry }
+            : { name, url: null, repo: body.repo || repo, loading: false, ...entry })
+        } else {
+          setReadmeView(prev => prev !== null
+            ? { ...prev, repo, loading: false, error: true }
+            : { name, url: null, repo, loading: false, error: true })
+        }
+      })
+      .catch(() => setReadmeView(prev => prev !== null
+        ? { ...prev, repo, loading: false, error: true }
+        : { name, url: null, repo, loading: false, error: true }))
+  }, [])
 
   /** Hand the plugin's setup off to the Agent: jump to a fresh session with
    *  a pre-filled diagnosis prompt. */
@@ -1506,20 +1537,24 @@ function MarketSection(props) {
           h('div', { className: 'dshm-readmeHead' },
             h('h3', null, t('readme') + ' · ' + readmeView.name + (readmeView.source ? ' — ' + readmeView.source : '')),
             h('span', { className: 'dshm-grow' }),
-            h('button', {
-              className: 'dshm-btn ghost' + ((readmeView.contentLang || readmeView.lang) === 'zh' ? ' on' : ''),
-              onClick: () => openReadme(readmeView.name, readmeView.url, 'zh'),
-              disabled: readmeView.loading,
-            }, '中文'),
-            h('button', {
-              className: 'dshm-btn ghost' + ((readmeView.contentLang || readmeView.lang) !== 'zh' ? ' on' : ''),
-              onClick: () => openReadme(readmeView.name, readmeView.url, 'en'),
-              disabled: readmeView.loading,
-            }, 'EN'),
             readmeView.repaired && h('span', { className: 'dshm-configTag', style: { color: 'var(--dsw-alias-state-warn-primary,#b45309)' }, title: t('readmeRepairedHint') }, t('readmeRepaired')),
             h('button', { className: 'dshm-btn ghost', onClick: () => setReadmeView(null) }, '✕')),
-          readmeView.notice && h('div', { className: 'dshm-readmeNotice' }, 'ℹ️ ' + readmeView.notice),
-          h('div', { className: 'dshm-readme' },
+          h('div', {
+            className: 'dshm-readme',
+            onClick: e => {
+              // README 内容里的语言链接（如「中文」→ README.zh.md）：同仓库
+              // 的 blob 链接点击后在弹窗内重新加载对应文件，不跳外链；
+              // 其余链接保持 renderMarkdown 默认的新标签打开。
+              const target = e.target
+              const a = target && typeof target.closest === 'function' ? target.closest('a') : null
+              if (a === null) return
+              const href = a.getAttribute('href') || ''
+              const m = /github\.com\/([A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+?)\/blob\/[A-Za-z0-9_.-]+\/([^#?]+)$/i.exec(href)
+              if (m === null || readmeView.repo === '' || m[1] !== readmeView.repo || !/\.(md|markdown)$/i.test(m[2])) return
+              e.preventDefault()
+              loadReadmeByPath(readmeView.name, readmeView.repo, decodeURIComponent(m[2]))
+            },
+          },
             readmeView.loading && h('div', { className: 'dshm-readmeLoading' }, h('span', { className: 'dshm-spin' }), t('loading')),
             readmeView.error && !readmeView.content
               ? h('div', { className: 'dshm-empty' }, t('readmeFail'))
