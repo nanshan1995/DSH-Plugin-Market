@@ -16,6 +16,8 @@ const h = React.createElement
 const { useState, useEffect, useMemo, useCallback } = React
 
 const NS = 'dsh-plugin-market'
+// README 内容缓存（按 name|url|lang）：语言切换秒开，避免重复请求。
+const readmeCache = new Map()
 
 const zh = {
   nav: '插件市场',
@@ -1051,6 +1053,12 @@ function MarketSection(props) {
    *  `wantLang` switches the displayed language inside the dialog. */
   const openReadme = useCallback((name, url, wantLang) => {
     const rlang = wantLang || lang
+    // 已加载过的语言直接秒开，不再请求（切换 zh/en 时第二次立即可用）
+    const cached = readmeCache.get(name + '|' + (url || '') + '|' + rlang)
+    if (cached !== undefined) {
+      setReadmeView({ name, url: url || null, lang: rlang, contentLang: cached.contentLang, content: cached.content, source: cached.source, repaired: cached.repaired === true })
+      return
+    }
     const qs = url
       ? '?url=' + encodeURIComponent(url) + '&lang=' + rlang
       : '?name=' + encodeURIComponent(name) + '&lang=' + rlang
@@ -1058,7 +1066,10 @@ function MarketSection(props) {
     fetch('/dsh-plugin-market/readme' + qs, { cache: 'no-store' })
       .then(res => res.json())
       .then(body => {
-        if (body.ok) setReadmeView({ name, url: url || null, lang: rlang, contentLang: body.contentLang, content: body.content, source: body.source, repaired: body.repaired === true })
+        if (body.ok) {
+          readmeCache.set(name + '|' + (url || '') + '|' + rlang, { contentLang: body.contentLang, content: body.content, source: body.source, repaired: body.repaired === true })
+          setReadmeView({ name, url: url || null, lang: rlang, contentLang: body.contentLang, content: body.content, source: body.source, repaired: body.repaired === true })
+        }
         else setReadmeView({ name, url: url || null, lang: rlang, description: body.description || '' })
       })
       .catch(() => setReadmeView(prev => ({ name, url: url || null, lang: rlang, error: true, ...(prev && prev.name === name ? { content: prev.content, source: prev.source } : {}) })))
