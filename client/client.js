@@ -606,11 +606,24 @@ function renderMarkdown(md) {
 
 function MarketSection(props) {
   const t = props.t
+  // 宿主 locale.getSnapshot() 每次调用返回新对象（引用不稳定）。useSyncExternalStore
+  // 的快照必须引用稳定，否则 React 会无限重渲染、内容永远无法提交到 DOM。
+  // 因此只把原始值 revision（缺省时退化到 active 字符串）作为订阅快照。
   const localeSnap = React.useSyncExternalStore(
     cb => props.locale.subscribe(cb),
-    () => props.locale.getSnapshot(),
+    () => {
+      try {
+        const s = props.locale.getSnapshot()
+        return s && typeof s.revision === 'number' ? s.revision : String(s && s.active)
+      } catch { return 0 }
+    },
   )
-  const lang = String(localeSnap.active).toLowerCase().startsWith('zh') ? 'zh' : 'en'
+  void localeSnap
+  let lang = 'en'
+  try {
+    const s = props.locale.getSnapshot()
+    if (s && typeof s.active === 'string') lang = s.active.toLowerCase().startsWith('zh') ? 'zh' : 'en'
+  } catch {}
   const [data, setData] = useState(null)
   const [loadError, setLoadError] = useState(false)
   const [installed, setInstalled] = useState({})
@@ -1376,7 +1389,7 @@ function MarketSection(props) {
         h('p', null, '⚠️ ' + t('confirmWarn')),
         h('div', { className: 'dshm-acts' },
           h('button', { className: 'dshm-btn ghost', onClick: () => setConfirming(null) }, t('cancel')),
-          h('button', { className: 'dshm-btn primary', onClick: () => doInstall(confirming) }, t('install')))))),
+          h('button', { className: 'dshm-btn primary', onClick: () => doInstall(confirming) }, t('install')))),
     readmeView !== null && h('div', { className: 'dshm-mask', onClick: e => { if (e.target === e.currentTarget) setReadmeView(null) } },
       h('div', { className: 'dshm-modal dshm-readmeModal' },
         h('div', { className: 'dshm-readmeHead' },
@@ -1390,7 +1403,7 @@ function MarketSection(props) {
               ? h('div', { className: 'dshm-empty' }, t('readmeFail'))
               : readmeView.content
                 ? renderMarkdown(readmeView.content)
-                : h('div', { className: 'dshm-empty' }, t('readmeEmpty') + (readmeView.description ? ' — ' + readmeView.description : '')))))
+                : h('div', { className: 'dshm-empty' }, t('readmeEmpty') + (readmeView.description ? ' — ' + readmeView.description : '')))))))
 }
 
 exports.name = 'dsh-market'
