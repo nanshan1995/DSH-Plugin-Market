@@ -16,8 +16,19 @@ const h = React.createElement
 const { useState, useEffect, useMemo, useCallback } = React
 
 const NS = 'dsh-plugin-market'
-// README 内容缓存（按 name|url|lang）：语言切换秒开，避免重复请求。
+// README 内容缓存（按 name|url|path）：只存浏览器内存、不落盘，
+// 1 小时自动过期释放，避免重复请求 raw.githubusercontent.com。
 const readmeCache = new Map()
+const README_CACHE_TTL_MS = 60 * 60 * 1000
+const readmeCacheGet = (key) => {
+  const hit = readmeCache.get(key)
+  if (hit === undefined) return undefined
+  if (Date.now() - hit.at > README_CACHE_TTL_MS) {
+    readmeCache.delete(key)
+    return undefined
+  }
+  return hit.entry
+}
 
 const zh = {
   nav: '插件市场',
@@ -1078,7 +1089,7 @@ function MarketSection(props) {
     const key = name + '|' + (url || '')
     const repoM = url ? /github\.com\/([A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+?)(?:\.git)?\/?$/.exec(url) : null
     const repo = repoM === null ? '' : repoM[1]
-    const cached = readmeCache.get(key)
+    const cached = readmeCacheGet(key)
     if (cached !== undefined) {
       setReadmeView({ name, url: url || null, repo, loading: false, contentLang: cached.contentLang, content: cached.content, source: cached.source, repaired: cached.repaired === true })
       return
@@ -1096,7 +1107,7 @@ function MarketSection(props) {
       .then(body => {
         if (body.ok) {
           const entry = { contentLang: body.contentLang, content: body.content, source: body.source, repaired: body.repaired === true }
-          readmeCache.set(key, entry)
+          readmeCache.set(key, { at: Date.now(), entry })
           setReadmeView({ name, url: url || null, repo: body.repo || repo, loading: false, ...entry })
         } else {
           setReadmeView({ name, url: url || null, repo, loading: false, description: body.description || '', error: true })
@@ -1110,7 +1121,7 @@ function MarketSection(props) {
   const loadReadmeByPath = useCallback((name, repo, path) => {
     if (repo === '') return
     const key = name + '|' + repo + '|path:' + path
-    const cached = readmeCache.get(key)
+    const cached = readmeCacheGet(key)
     if (cached !== undefined) {
       setReadmeView(prev => prev === null
         ? { name, url: null, repo, loading: false, contentLang: cached.contentLang, content: cached.content, source: cached.source, repaired: cached.repaired === true }
@@ -1125,7 +1136,7 @@ function MarketSection(props) {
       .then(body => {
         if (body.ok) {
           const entry = { contentLang: body.contentLang, content: body.content, source: body.source, repaired: body.repaired === true }
-          readmeCache.set(key, entry)
+          readmeCache.set(key, { at: Date.now(), entry })
           setReadmeView(prev => prev !== null
             ? { ...prev, repo: body.repo || repo, loading: false, ...entry }
             : { name, url: null, repo: body.repo || repo, loading: false, ...entry })
