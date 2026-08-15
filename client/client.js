@@ -630,7 +630,11 @@ function parseSafeHtml(html) {
     for (const child of node.childNodes) {
       if (child.nodeType === 3) {
         const t = (child.textContent || '').trim()
-        if (t !== '') kids.push(t)
+        if (t !== '') {
+          // HTML 内的文本也做 inline Markdown（**粗体**、`代码`、[链接]）
+          const inline = inlineMd(t, 'hx' + (k++))
+          kids.push(...(Array.isArray(inline) ? inline : [inline]))
+        }
       } else if (child.nodeType === 1) {
         const tag = child.tagName.toLowerCase()
         if (!SAFE_HTML_TAGS.has(tag)) continue
@@ -683,14 +687,30 @@ function renderMarkdown(md) {
   const isBlockStart = l => /^\s*```/.test(l) || /^#{1,6}\s/.test(l) || /^\s*[-*]\s/.test(l)
     || /^\s*\d+[.)]\s/.test(l) || /^\s*(-{3,}|\*{3,})$/.test(l)
   const htmlOpen = l => /^\s*<(table|thead|tbody|tr|img|center|div|p|br|details|summary|kbd|sup|sub)/i.test(l)
+  const htmlCloseTag = l => /<\/(table|div|center|details|p)>/i.test(l)
   while (i < lines.length) {
     if (blank(lines[i])) { i++; continue }
-    // 整段 HTML（README 常见 <table> 等）：按安全白名单解析为 React 元素。
+    // HTML 块（README 常见 <table>/<div>）：安全白名单解析。
+    // 表格整块收集；<div> 等容器遇到 Markdown 起始行（标题/列表等）
+    // 就停止，把 Markdown 交给正常渲染（GitHub 也支持 div 内 Markdown）。
     if (htmlOpen(lines[i])) {
-      let buf = []
+      const isTable = /^\s*<(table|thead|tbody|tr)/i.test(lines[i])
+      const buf = []
       while (i < lines.length) {
-        buf.push(lines[i])
-        if (/<\/(table|div|center|details)>/i.test(lines[i])) { i++; break }
+        const line = lines[i]
+        if (isTable) {
+          buf.push(line)
+          if (/<\/(table|thead|tbody)>/i.test(line)) { i++; break }
+        } else {
+          // 容器内：遇到 Markdown 起始行（标题/列表等）中断，交给 Markdown 渲染；
+          // 自闭合 HTML（img/br）继续留在块内。
+          const mdStart = isBlockStart(line)
+          const htmlStart = /^\s*<(table|div|img|center|details|h[1-6]|ul|ol|p|pre)/i.test(line)
+          const selfClose = /^\s*<(img|br|hr)\b/i.test(line)
+          if (buf.length > 0 && ((mdStart && !htmlStart) || (htmlStart && !selfClose && !htmlCloseTag(line)))) break
+          buf.push(line)
+          if (htmlCloseTag(line)) { i++; break }
+        }
         i++
       }
       const parsed = parseSafeHtml(buf.join('\n'))
