@@ -60,8 +60,8 @@ const zh = {
   patchLoaded: 'patch 行加载',
   readmeEmpty: '该插件未提供 README 使用说明',
   readmeFail: '使用说明加载失败',
-  readmeNoZh: '该插件暂无中文版，当前显示英文',
-  readmeNoEn: '该插件暂无英文版，当前显示中文',
+  readmeNoZh: '未找到该插件的中文版 README，当前显示英文',
+  readmeNoEn: '未找到该插件的英文版 README，当前显示中文',
   readmeRepaired: '已修复乱码',
   readmeRepairedHint: '该 README 原文件编码已损坏（双重 GB18030 乱码），已自动还原为可读文本；个别已被损坏的位置显示为「?」。',
   disable: '停用',
@@ -188,8 +188,8 @@ const en = {
   patchLoaded: 'patch row',
   readmeEmpty: 'No README provided for this plugin',
   readmeFail: 'Failed to load the README',
-  readmeNoZh: 'No Chinese README for this plugin — showing English',
-  readmeNoEn: 'No English README for this plugin — showing Chinese',
+  readmeNoZh: 'No Chinese README found for this plugin — showing English',
+  readmeNoEn: 'No English README found for this plugin — showing Chinese',
   readmeRepaired: 'encoding repaired',
   readmeRepairedHint: 'This README shipped with corrupted encoding (double GB18030 mojibake) and was restored to readable text; spots already destroyed upstream show as "?".',
   disable: 'Disable',
@@ -1097,7 +1097,7 @@ function MarketSection(props) {
       .then(res => res.json())
       .then(body => {
         if (body.ok) {
-          // 请求语言与实际内容语言不符时提示（如仓库没有中文版）。
+          // 请求语言与实际内容语言不符时提示（服务端已尽力找过目标语言）。
           const notice = body.contentLang === rlang ? null : (rlang === 'zh' ? t('readmeNoZh') : t('readmeNoEn'))
           const entry = { contentLang: body.contentLang, content: body.content, source: body.source, repaired: body.repaired === true, notice }
           readmeCache.set(key, entry)
