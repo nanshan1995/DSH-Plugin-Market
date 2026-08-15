@@ -67,6 +67,7 @@ const zh = {
   envNoNode: '未检测到 Node.js——请先安装 Node.js（22+），再回来安装插件',
   envFix: '自动装好',
   envFixing: '正在准备…',
+  envRetry: '重试',
   envFixFail: '自动准备没成功，请点"导出日志"把文件发给我们反馈',
   loading: '正在加载插件目录…',
   backTop: '回到顶部',
@@ -182,6 +183,7 @@ const en = {
   envNoNode: 'No Node.js detected — install Node.js (22+) first, then come back to install plugins',
   envFix: 'Set up automatically',
   envFixing: 'Setting up…',
+  envRetry: 'Retry',
   envFixFail: 'Automatic setup failed — please use "Export log" and send us the file',
   loading: 'Loading the catalog…',
   backTop: 'Back to top',
@@ -1408,11 +1410,11 @@ function MarketSection(props) {
         envFailed ? t('envFixFail')
           : toolReport && toolReport.node === false ? t('envNoNode')
             : t('envMissing')),
-      !envFailed && toolReport && toolReport.node !== false && h('button', {
+      toolReport && toolReport.node !== false && h('button', {
         className: 'dshm-btn primary' + (envFixing ? ' busy' : ''),
         disabled: envFixing,
-        onClick: fixEnv,
-      }, envFixing ? t('envFixing') : t('envFix'))),
+        onClick: () => { setEnvFailed(false); fixEnv() },
+      }, envFixing ? t('envFixing') : envFailed ? t('envRetry') : t('envFix'))),
     hotUrls.length > 0 && h('div', { className: 'dshm-banner' },
       h('span', null, '✨'),
       h('span', { className: 'dshm-grow' }, h('b', null, hotUrls.length), ' ', t('hotBanner')),
