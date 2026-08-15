@@ -363,6 +363,7 @@ const CSS = `
 .dshm-btn.primary:hover:not(:disabled){background:color-mix(in srgb,var(--dsw-alias-state-business-primary,#4f6ef7) 88%,#000)}
 .dshm-btn.ghost{border-color:var(--dsw-alias-border-l2,#d9d9d9);color:var(--dsw-alias-label-primary,#1f2328)}
 .dshm-btn.ghost:hover{background:var(--dsw-alias-interactive-bg-hover,rgba(0,0,0,.03))}
+.dshm-btn.ghost.on{border-color:var(--dsw-alias-state-business-primary,#4f6ef7);color:var(--dsw-alias-state-business-primary,#4f6ef7);background:color-mix(in srgb,var(--dsw-alias-state-business-primary,#4f6ef7) 10%,transparent);font-weight:500}
 .dshm-btn.fav{border-color:transparent;color:var(--dsw-alias-state-warn-primary,#eab308);background:color-mix(in srgb,var(--dsw-alias-state-warn-primary,#eab308) 12%,transparent);font-size:14px;padding:2px 8px}
 .dshm-btn.upd{background:color-mix(in srgb,var(--dsw-alias-state-warn-primary,#ea580c) 10%,transparent);color:var(--dsw-alias-state-warn-primary,#ea580c);font-weight:500}
 .dshm-btn.danger{border-color:var(--dsw-alias-state-error-primary,#dc2626);color:var(--dsw-alias-state-error-primary,#dc2626)}
@@ -948,19 +949,21 @@ function MarketSection(props) {
 
   /** Load a plugin's README into the in-market usage-instructions dialog.
    *  Installed plugins read their local node_modules README; community
-   *  (discover) plugins pass the GitHub URL and the server fetches it. */
-  const openReadme = useCallback((name, url) => {
+   *  (discover) plugins pass the GitHub URL and the server fetches it.
+   *  `wantLang` switches the displayed language inside the dialog. */
+  const openReadme = useCallback((name, url, wantLang) => {
+    const rlang = wantLang || lang
     const qs = url
-      ? '?url=' + encodeURIComponent(url) + '&lang=' + lang
-      : '?name=' + encodeURIComponent(name) + '&lang=' + lang
-    setReadmeView({ name, loading: true })
+      ? '?url=' + encodeURIComponent(url) + '&lang=' + rlang
+      : '?name=' + encodeURIComponent(name) + '&lang=' + rlang
+    setReadmeView({ name, url: url || null, lang: rlang, loading: true })
     fetch('/dsh-plugin-market/readme' + qs, { cache: 'no-store' })
       .then(res => res.json())
       .then(body => {
-        if (body.ok) setReadmeView({ name, content: body.content, source: body.source, repaired: body.repaired === true })
-        else setReadmeView({ name, description: body.description || '' })
+        if (body.ok) setReadmeView({ name, url: url || null, lang: rlang, content: body.content, source: body.source, repaired: body.repaired === true })
+        else setReadmeView({ name, url: url || null, lang: rlang, description: body.description || '' })
       })
-      .catch(() => setReadmeView({ name, error: true }))
+      .catch(() => setReadmeView({ name, url: url || null, lang: rlang, error: true }))
   }, [lang])
 
   /** Hand the plugin's setup off to the Agent: jump to a fresh session with
@@ -1360,6 +1363,16 @@ function MarketSection(props) {
           h('div', { className: 'dshm-readmeHead' },
             h('h3', null, t('readme') + ' · ' + readmeView.name + (readmeView.source ? ' — ' + readmeView.source : '')),
             h('span', { className: 'dshm-grow' }),
+            h('button', {
+              className: 'dshm-btn ghost' + (readmeView.lang === 'zh' ? ' on' : ''),
+              onClick: () => openReadme(readmeView.name, readmeView.url, 'zh'),
+              disabled: readmeView.loading,
+            }, '中文'),
+            h('button', {
+              className: 'dshm-btn ghost' + (readmeView.lang !== 'zh' ? ' on' : ''),
+              onClick: () => openReadme(readmeView.name, readmeView.url, 'en'),
+              disabled: readmeView.loading,
+            }, 'English'),
             readmeView.repaired && h('span', { className: 'dshm-configTag', style: { color: 'var(--dsw-alias-state-warn-primary,#b45309)' }, title: t('readmeRepairedHint') }, t('readmeRepaired')),
             h('button', { className: 'dshm-btn ghost', onClick: () => setReadmeView(null) }, '✕')),
           h('div', { className: 'dshm-readme' },
