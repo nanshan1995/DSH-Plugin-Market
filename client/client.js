@@ -335,7 +335,7 @@ const CSS = `
 .dshm-irowTimeRow{overflow-wrap:break-word}
 .dshm-readmeModal{width:min(760px,94vw);display:flex;flex-direction:column;max-height:80vh}
 .dshm-readmeHead{display:flex;align-items:center;gap:8px;margin-bottom:10px;flex-shrink:0}
-.dshm-readmeHead h3{margin:0}
+.dshm-readmeHead h3{margin:0;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}
 .dshm-readme{max-height:62vh;overflow:auto;font-size:13px;line-height:1.65;color:var(--dsw-alias-label-primary,#1f2328);padding-right:4px}
 .dshm-readme h1,.dshm-readme h2{font-size:16px;font-weight:600;line-height:24px;margin:14px 0 6px;border-bottom:1px solid var(--dsw-alias-border-l2,#e5e7eb);padding-bottom:4px}
 .dshm-readme h3{font-size:14px;font-weight:600;margin:12px 0 4px}
@@ -358,7 +358,7 @@ const CSS = `
 .dshm-grow{flex:1}
 .dshm-src{font-size:12px;color:var(--dsw-alias-label-tertiary,#9ca3af);text-decoration:none}
 .dshm-src:hover{color:var(--dsw-alias-state-business-primary,#4f6ef7)}
-.dshm-btn{border:1px solid transparent;background:0 0;border-radius:6px;padding:4px 10px;font:inherit;font-size:12px;line-height:18px;cursor:pointer;display:inline-flex;align-items:center;gap:4px;text-decoration:none}
+.dshm-btn{border:1px solid transparent;background:0 0;border-radius:6px;padding:4px 10px;font:inherit;font-size:12px;line-height:18px;cursor:pointer;display:inline-flex;align-items:center;gap:4px;text-decoration:none;white-space:nowrap;flex-shrink:0}
 .dshm-btn.primary{background:var(--dsw-alias-state-business-primary,#4f6ef7);color:#fff;font-weight:500}
 .dshm-btn.primary:hover:not(:disabled){background:color-mix(in srgb,var(--dsw-alias-state-business-primary,#4f6ef7) 88%,#000)}
 .dshm-btn.ghost{border-color:var(--dsw-alias-border-l2,#d9d9d9);color:var(--dsw-alias-label-primary,#1f2328)}
@@ -960,7 +960,7 @@ function MarketSection(props) {
     fetch('/dsh-plugin-market/readme' + qs, { cache: 'no-store' })
       .then(res => res.json())
       .then(body => {
-        if (body.ok) setReadmeView({ name, url: url || null, lang: rlang, content: body.content, source: body.source, repaired: body.repaired === true })
+        if (body.ok) setReadmeView({ name, url: url || null, lang: rlang, contentLang: body.contentLang, content: body.content, source: body.source, repaired: body.repaired === true })
         else setReadmeView({ name, url: url || null, lang: rlang, description: body.description || '' })
       })
       .catch(() => setReadmeView({ name, url: url || null, lang: rlang, error: true }))
@@ -1364,12 +1364,12 @@ function MarketSection(props) {
             h('h3', null, t('readme') + ' · ' + readmeView.name + (readmeView.source ? ' — ' + readmeView.source : '')),
             h('span', { className: 'dshm-grow' }),
             h('button', {
-              className: 'dshm-btn ghost' + (readmeView.lang === 'zh' ? ' on' : ''),
+              className: 'dshm-btn ghost' + ((readmeView.contentLang || readmeView.lang) === 'zh' ? ' on' : ''),
               onClick: () => openReadme(readmeView.name, readmeView.url, 'zh'),
               disabled: readmeView.loading,
             }, '中文'),
             h('button', {
-              className: 'dshm-btn ghost' + (readmeView.lang !== 'zh' ? ' on' : ''),
+              className: 'dshm-btn ghost' + ((readmeView.contentLang || readmeView.lang) !== 'zh' ? ' on' : ''),
               onClick: () => openReadme(readmeView.name, readmeView.url, 'en'),
               disabled: readmeView.loading,
             }, 'EN'),
