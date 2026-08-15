@@ -1271,7 +1271,6 @@ function MarketSection(props) {
               gitUrl !== null
                 ? h('a', { className: 'dshm-spec dshm-src', href: gitUrl, target: '_blank', rel: 'noreferrer' }, specText)
                 : h('span', { className: 'dshm-spec' }, specText),
-              entry !== undefined && h('div', { className: 'dshm-irowDesc' }, descOf(entry, lang)),
               selectedName === name && h('div', { className: 'dshm-irowTime' },
                 h('div', { className: 'dshm-irowTimeRow' }, t('installedAt') + ': ' + (fmtTime(timeInfo?.installed) || '—')),
                 h('div', { className: 'dshm-irowTimeRow' }, t('updatedAt') + ': ' + (fmtTime(timeInfo?.updated) || '—'))),
