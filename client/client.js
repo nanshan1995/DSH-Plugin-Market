@@ -1408,11 +1408,12 @@ function MarketSection(props) {
    *  0 = 正在安装/更新/卸载 + 审计被阻止待决定（最前）
    *  → 1 = 已安装/可更新 → 2 = 未安装；同权重内保持原顺序。 */
   const activeRank = (p) => {
+    // 只有「进行中/待决定」的置顶（正在安装/更新/卸载、审计被阻止待决定）；
+    // 已安装的和未安装的一样，保持原来的热门/最新顺序。
     if (busyUrl === p.url) return 0
     if (auditBlock !== null && auditBlock.plugin && auditBlock.plugin.url === p.url) return 0
     const inKey = installedKeyOf(p, installed)
-    if (inKey === null) return 2
-    if (updatingName === inKey || removingName === inKey) return 0
+    if (inKey !== null && (updatingName === inKey || removingName === inKey)) return 0
     return 1
   }
 
