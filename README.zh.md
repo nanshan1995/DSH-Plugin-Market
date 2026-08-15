@@ -91,6 +91,22 @@ cordis.patch.yml      bundle patch：向 profile 插入 dsh-market 行
 
 静态审计是**危险能力雷达，不是行为防火墙**：它能拦动态执行、偷凭据、安装脚本、篡改他人插件等最高危静态模式，但无法判断运行时的数据流意图（如「读文档再上传」）。收录 ≠ 背书：只安装你信任的来源；配合运行时哨兵（如 dsh-plugin-audit）与 commit 锁定使用更稳妥。
 
+## 开发流程（分支规范）
+
+- `main` —— **稳定发版分支**：只接受经过测试的合并，每次合并后即为可发布版本
+- `test` —— **日常开发测试分支**：所有功能调整、修复、实验都在这里进行，测试通过后合并回 `main`
+
+流程：`test` 上开发与自测 → 验证通过 → 合并到 `main`（推荐提 PR）→ `main` 打版本发版。
+
+```sh
+git checkout test          # 切到测试分支
+# ...调整、测试...
+git add -A && git commit -m "feat/fix: ..."
+git push origin test       # 推测试分支
+# 测试通过后合并发版
+git checkout main && git merge test && git push origin main
+```
+
 ## 数据源与许可
 
 - 精选目录实时来自 [awesome-dsh-plugin.com/plugins.json](https://awesome-dsh-plugin.com/plugins.json)（CI 每日刷新），离线时用内置快照

@@ -91,6 +91,22 @@ cordis.patch.yml      bundle patch: inserts the dsh-market row into the profile
 
 The static audit is a **capability radar, not a behavior firewall**: it blocks the highest-risk static patterns (dynamic exec, credential theft, install scripts, tampering with other plugins) but cannot judge runtime data-flow intent (e.g. "read documents, then upload"). Curation ≠ endorsement: only install sources you trust, and pair this with a runtime sentinel (e.g. dsh-plugin-audit) and commit pinning.
 
+## Development workflow (branch policy)
+
+- `main` — **stable release branch**: only accepts tested merges; every merge is a releasable state
+- `test` — **daily development branch**: all adjustments, fixes and experiments happen here; merged back to `main` after tests pass
+
+Flow: develop and self-test on `test` → verify → merge into `main` (a PR is recommended) → version and release from `main`.
+
+```sh
+git checkout test          # switch to the test branch
+# ...change, test...
+git add -A && git commit -m "feat/fix: ..."
+git push origin test       # push the test branch
+# after tests pass, merge and release
+git checkout main && git merge test && git push origin main
+```
+
 ## Data sources & license
 
 - Curated catalog comes live from [awesome-dsh-plugin.com/plugins.json](https://awesome-dsh-plugin.com/plugins.json) (CI-refreshed daily), with a bundled offline snapshot
