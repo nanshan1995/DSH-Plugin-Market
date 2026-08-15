@@ -16,10 +16,11 @@ const h = React.createElement
 const { useState, useEffect, useMemo, useCallback } = React
 
 const NS = 'dsh-plugin-market'
-// README 内容缓存（按 name|url|path）：只存浏览器内存、不落盘，
-// 1 小时自动过期释放，避免重复请求 raw.githubusercontent.com。
+// README 内容缓存（按 name|url|path）：只存浏览器内存、不落盘；
+// 30 分钟自动过期释放 + 容量上限（LRU 淘汰最久未用），避免重复请求。
 const readmeCache = new Map()
-const README_CACHE_TTL_MS = 60 * 60 * 1000
+const README_CACHE_TTL_MS = 30 * 60 * 1000
+const README_CACHE_MAX = 100
 const readmeCacheGet = (key) => {
   const hit = readmeCache.get(key)
   if (hit === undefined) return undefined
@@ -27,7 +28,16 @@ const readmeCacheGet = (key) => {
     readmeCache.delete(key)
     return undefined
   }
+  readmeCache.delete(key)
+  readmeCache.set(key, hit)
   return hit.entry
+}
+const readmeCacheSet = (key, entry) => {
+  if (readmeCache.has(key)) readmeCache.delete(key)
+  readmeCache.set(key, { at: Date.now(), entry })
+  while (readmeCache.size > README_CACHE_MAX) {
+    readmeCache.delete(readmeCache.keys().next().value)
+  }
 }
 
 const zh = {
@@ -72,6 +82,7 @@ const zh = {
   readmeEmpty: '该插件未提供 README 使用说明',
   readmeFail: '使用说明加载失败',
   readmeRepaired: '已修复乱码',
+  readmeRefreshHint: '强制刷新：绕过缓存重新拉取最新内容',
   readmeRepairedHint: '该 README 原文件编码已损坏（双重 GB18030 乱码），已自动还原为可读文本；个别已被损坏的位置显示为「?」。',
   disable: '停用',
   enable: '启用',
@@ -198,6 +209,7 @@ const en = {
   readmeEmpty: 'No README provided for this plugin',
   readmeFail: 'Failed to load the README',
   readmeRepaired: 'encoding repaired',
+  readmeRefreshHint: 'Force refresh: re-fetch the latest content, bypassing the cache',
   readmeRepairedHint: 'This README shipped with corrupted encoding (double GB18030 mojibake) and was restored to readable text; spots already destroyed upstream show as "?".',
   disable: 'Disable',
   enable: 'Enable',
@@ -817,6 +829,7 @@ function MarketSection(props) {
   const [hotUrls, setHotUrls] = useState([])
   const [hotNames, setHotNames] = useState([])
   const [progressLine, setProgressLine] = useState(null)
+  const [progressSeconds, setProgressSeconds] = useState(null)
   const [removeArmed, setRemoveArmed] = useState(null)
   const [removingName, setRemovingName] = useState(null)
   const [removedCount, setRemovedCount] = useState(0)
@@ -1084,18 +1097,19 @@ function MarketSection(props) {
    *  (discover) plugins pass the GitHub URL and the server fetches it.
    *  只做呈现：初始按界面语言展示，不做 中文/EN 切换按钮——想换语言就点
    *  README 内容里的语言链接（如「中文」），弹窗内重新加载对应文件。
+   *  force=true（弹窗「刷新」按钮）：跳过缓存强制重拉最新内容。
    *  简单可靠：查缓存 → 请求 → 显示；失败必清 loading。 */
-  const openReadme = useCallback((name, url) => {
+  const openReadme = useCallback((name, url, force) => {
     const key = name + '|' + (url || '')
     const repoM = url ? /github\.com\/([A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+?)(?:\.git)?\/?$/.exec(url) : null
     const repo = repoM === null ? '' : repoM[1]
-    const cached = readmeCacheGet(key)
+    const cached = force === true ? undefined : readmeCacheGet(key)
     if (cached !== undefined) {
       setReadmeView({ name, url: url || null, repo, loading: false, contentLang: cached.contentLang, content: cached.content, source: cached.source, repaired: cached.repaired === true })
       return
     }
     const qs = url
-      ? '?url=' + encodeURIComponent(url) + '&lang=' + lang
+      ? '?url=' + encodeURIComponent(url) + '&lang=' + lang + (force === true ? '&fresh=1' : '')
       : '?name=' + encodeURIComponent(name) + '&lang=' + lang
     // 重新打开/加载时保留旧内容：加载完成前不闪「未提供 README」占位，
     // 旧内容保持可见，顶部只显示一条加载行。
@@ -1107,7 +1121,7 @@ function MarketSection(props) {
       .then(body => {
         if (body.ok) {
           const entry = { contentLang: body.contentLang, content: body.content, source: body.source, repaired: body.repaired === true }
-          readmeCache.set(key, { at: Date.now(), entry })
+          readmeCacheSet(key, entry)
           setReadmeView({ name, url: url || null, repo: body.repo || repo, loading: false, ...entry })
         } else {
           setReadmeView({ name, url: url || null, repo, loading: false, description: body.description || '', error: true })
@@ -1117,11 +1131,12 @@ function MarketSection(props) {
   }, [lang])
 
   /** README 内容里的语言链接（如「中文」指向 README.zh.md）：点击后
-   *  在弹窗内重新加载该文件，不跳去 GitHub 外链。 */
-  const loadReadmeByPath = useCallback((name, repo, path) => {
+   *  在弹窗内重新加载该文件，不跳去 GitHub 外链。
+   *  force=true（弹窗「刷新」按钮）：跳过缓存强制重拉最新内容。 */
+  const loadReadmeByPath = useCallback((name, repo, path, force) => {
     if (repo === '') return
     const key = name + '|' + repo + '|path:' + path
-    const cached = readmeCacheGet(key)
+    const cached = force === true ? undefined : readmeCacheGet(key)
     if (cached !== undefined) {
       setReadmeView(prev => prev === null
         ? { name, url: null, repo, loading: false, contentLang: cached.contentLang, content: cached.content, source: cached.source, repaired: cached.repaired === true }
@@ -1131,12 +1146,12 @@ function MarketSection(props) {
     setReadmeView(prev => prev !== null && prev.name === name
       ? { ...prev, loading: true }
       : { name, url: null, repo, loading: true })
-    fetch('/dsh-plugin-market/readme?url=' + encodeURIComponent('https://github.com/' + repo) + '&path=' + encodeURIComponent(path), { cache: 'no-store' })
+    fetch('/dsh-plugin-market/readme?url=' + encodeURIComponent('https://github.com/' + repo) + '&path=' + encodeURIComponent(path) + (force === true ? '&fresh=1' : ''), { cache: 'no-store' })
       .then(res => res.json())
       .then(body => {
         if (body.ok) {
           const entry = { contentLang: body.contentLang, content: body.content, source: body.source, repaired: body.repaired === true }
-          readmeCache.set(key, { at: Date.now(), entry })
+          readmeCacheSet(key, entry)
           setReadmeView(prev => prev !== null
             ? { ...prev, repo: body.repo || repo, loading: false, ...entry }
             : { name, url: null, repo: body.repo || repo, loading: false, ...entry })
@@ -1150,6 +1165,16 @@ function MarketSection(props) {
         ? { ...prev, repo, loading: false, error: true }
         : { name, url: null, repo, loading: false, error: true }))
   }, [])
+
+  /** 弹窗「刷新」按钮：绕过两级缓存，强制重拉当前文件的最新内容。 */
+  const refreshReadme = useCallback(() => {
+    if (readmeView === null || readmeView.loading) return
+    if (readmeView.repo !== '' && readmeView.source) {
+      loadReadmeByPath(readmeView.name, readmeView.repo, readmeView.source, true)
+    } else {
+      openReadme(readmeView.name, readmeView.url, true)
+    }
+  }, [readmeView, openReadme, loadReadmeByPath])
 
   /** Hand the plugin's setup off to the Agent: jump to a fresh session with
    *  a pre-filled diagnosis prompt. */
@@ -1168,8 +1193,9 @@ function MarketSection(props) {
   }, [])
 
   useEffect(() => {
-    if (busyUrl === null && updatingName === null) {
+    if (busyUrl === null && updatingName === null && removingName === null) {
       setProgressLine(null)
+      setProgressSeconds(null)
       return
     }
     const timer = setInterval(() => {
@@ -1178,10 +1204,13 @@ function MarketSection(props) {
         .then(status => {
           if (status.active) {
             setProgressLine((status.lastLine || '…') + '  (' + status.seconds + 's)')
+            setProgressSeconds(status.seconds)
           } else if (status.auditing === true) {
             setProgressLine(t('auditingPhase'))
+            setProgressSeconds(null)
           } else {
             setProgressLine(null)
+            setProgressSeconds(null)
             setInstalled(status.installed || {})
             const pending = readSession('dshm-pending')
             if (pending !== null && busyUrl !== null) {
@@ -1200,7 +1229,7 @@ function MarketSection(props) {
         .catch(() => {})
     }, 2000)
     return () => clearInterval(timer)
-  }, [busyUrl, updatingName, t])
+  }, [busyUrl, updatingName, removingName, t])
 
   // 发现页结果：live GitHub search/browse（无精选本地目录了）。
   const plugins = useMemo(() => {
@@ -1337,7 +1366,8 @@ function MarketSection(props) {
                   onClick: () => doUpdate(inKey),
                 }, t('update')),
                 !marketSelf && (removingName === inKey
-                  ? h('button', { className: 'dshm-btn danger busy', disabled: true }, t('uninstalling'))
+                  ? h('button', { className: 'dshm-btn danger busy', disabled: true },
+                      t('uninstalling') + (progressSeconds !== null ? ' (' + progressSeconds + 's)' : ''))
                   : removeArmed === inKey
                     ? h('button', {
                         className: 'dshm-btn danger armed',
@@ -1350,7 +1380,8 @@ function MarketSection(props) {
                         onClick: () => setRemoveArmed(inKey),
                       }, t('uninstall'))))
             : busy
-              ? h('button', { className: 'dshm-btn primary busy', disabled: true }, t('installing'))
+              ? h('button', { className: 'dshm-btn primary busy', disabled: true },
+                  t('installing') + (progressSeconds !== null ? ' (' + progressSeconds + 's)' : ''))
               : h('button', {
                   className: 'dshm-btn primary',
                   disabled: busyUrl !== null || !envReady || !gateOn,
@@ -1358,7 +1389,7 @@ function MarketSection(props) {
                   onClick: () => setConfirming(p),
                 }, t('install'))),
       h('div', { className: 'dshm-richDesc', title: desc }, desc),
-      busy && h('div', { className: 'dshm-progress' },
+      (busy || (inKey !== null && removingName === inKey)) && h('div', { className: 'dshm-progress' },
         h('span', { className: 'dshm-spin' }),
         h('code', { className: 'dshm-grow' }, progressLine || t('progressHint'))),
       h('div', { className: 'dshm-richFoot' },
@@ -1468,14 +1499,14 @@ function MarketSection(props) {
               selectedName === name && h('div', { className: 'dshm-irowTime' },
                 h('div', { className: 'dshm-irowTimeRow' }, t('installedAt') + ': ' + (fmtTime(timeInfo?.installed) || '—')),
                 h('div', { className: 'dshm-irowTimeRow' }, t('updatedAt') + ': ' + (fmtTime(timeInfo?.updated) || '—'))),
-              updatingName === name && h('div', { className: 'dshm-progress' },
+              (updatingName === name || removingName === name) && h('div', { className: 'dshm-progress' },
                 h('span', { className: 'dshm-spin' }),
                 h('code', { className: 'dshm-grow' }, progressLine || t('progressHint')))),
             h('span', { className: 'dshm-grow' }),
             updatedNames.includes(name)
               ? h('span', { className: 'dshm-irowStatus', style: { color: 'var(--dsw-alias-state-success-primary,#16a34a)' } }, t('updated'))
               : updatingName === name
-                ? h('span', { className: 'dshm-irowStatus' }, t('updating'))
+                ? h('span', { className: 'dshm-irowStatus' }, t('updating') + (progressSeconds !== null ? ' (' + progressSeconds + 's)' : ''))
                 : updAvailable
                   ? null
                   : h('span', { className: 'dshm-irowStatus' }, status && status.kind === 'linked' ? t('linkedDev') : isPatchRow ? t('patchLoaded') : t('upToDate')),
@@ -1496,7 +1527,8 @@ function MarketSection(props) {
             }, t('update')),
             name !== 'dsh-plugin-market' && name !== 'dsh-plugin-market' && (
               removingName === name
-                ? h('button', { className: 'dshm-btn danger busy', disabled: true }, t('uninstalling'))
+                ? h('button', { className: 'dshm-btn danger busy', disabled: true },
+                    t('uninstalling') + (progressSeconds !== null ? ' (' + progressSeconds + 's)' : ''))
                 : removeArmed === name
                   ? h('button', {
                       className: 'dshm-btn danger armed',
@@ -1549,6 +1581,7 @@ function MarketSection(props) {
             h('h3', null, t('readme') + ' · ' + readmeView.name + (readmeView.source ? ' — ' + readmeView.source : '')),
             h('span', { className: 'dshm-grow' }),
             readmeView.repaired && h('span', { className: 'dshm-configTag', style: { color: 'var(--dsw-alias-state-warn-primary,#b45309)' }, title: t('readmeRepairedHint') }, t('readmeRepaired')),
+            h('button', { className: 'dshm-btn ghost', onClick: refreshReadme, disabled: readmeView.loading, title: t('readmeRefreshHint') }, '↻'),
             h('button', { className: 'dshm-btn ghost', onClick: () => setReadmeView(null) }, '✕')),
           h('div', {
             className: 'dshm-readme',
