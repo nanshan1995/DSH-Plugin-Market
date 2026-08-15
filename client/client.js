@@ -830,7 +830,6 @@ function MarketSection(props) {
   const [hotNames, setHotNames] = useState([])
   const [progressLine, setProgressLine] = useState(null)
   const [progressSeconds, setProgressSeconds] = useState(null)
-  const [removeArmed, setRemoveArmed] = useState(null)
   const [removingName, setRemovingName] = useState(null)
   const [removedCount, setRemovedCount] = useState(0)
   const [envReady, setEnvReady] = useState(true)
@@ -1304,7 +1303,6 @@ function MarketSection(props) {
   }, [refreshInstalled, t])
 
   const doUninstall = useCallback((name) => {
-    setRemoveArmed(null)
     setInstallError(null)
     setRemovingName(name)
     fetch('/dsh-plugin-market/uninstall', {
@@ -1368,17 +1366,11 @@ function MarketSection(props) {
                 !marketSelf && (removingName === inKey
                   ? h('button', { className: 'dshm-btn danger busy', disabled: true },
                       t('uninstalling') + (progressSeconds !== null ? ' (' + progressSeconds + 's)' : ''))
-                  : removeArmed === inKey
-                    ? h('button', {
-                        className: 'dshm-btn danger armed',
-                        onClick: () => doUninstall(inKey),
-                        onMouseLeave: () => setRemoveArmed(null),
-                      }, t('confirmRemove'))
-                    : h('button', {
-                        className: 'dshm-btn danger',
-                        disabled: busyUrl !== null || updatingName !== null || removingName !== null,
-                        onClick: () => setRemoveArmed(inKey),
-                      }, t('uninstall'))))
+                  : h('button', {
+                      className: 'dshm-btn danger',
+                      disabled: busyUrl !== null || updatingName !== null || removingName !== null,
+                      onClick: () => doUninstall(inKey),
+                    }, t('uninstall'))))
             : busy
               ? h('button', { className: 'dshm-btn primary busy', disabled: true },
                   t('installing') + (progressSeconds !== null ? ' (' + progressSeconds + 's)' : ''))
@@ -1543,17 +1535,11 @@ function MarketSection(props) {
               removingName === name
                 ? h('button', { className: 'dshm-btn danger busy', disabled: true },
                     t('uninstalling') + (progressSeconds !== null ? ' (' + progressSeconds + 's)' : ''))
-                : removeArmed === name
-                  ? h('button', {
-                      className: 'dshm-btn danger armed',
-                      onClick: () => doUninstall(name),
-                      onMouseLeave: () => setRemoveArmed(null),
-                    }, t('confirmRemove'))
-                  : h('button', {
-                      className: 'dshm-btn danger',
-                      disabled: removingName !== null || busyUrl !== null || updatingName !== null,
-                      onClick: () => setRemoveArmed(name),
-                    }, t('uninstall'))),
+                : h('button', {
+                    className: 'dshm-btn danger',
+                    disabled: removingName !== null || busyUrl !== null || updatingName !== null,
+                    onClick: () => doUninstall(name),
+                  }, t('uninstall'))),
           )
         }))
 
