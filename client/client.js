@@ -829,6 +829,7 @@ function MarketSection(props) {
   const [hotUrls, setHotUrls] = useState([])
   const [hotNames, setHotNames] = useState([])
   const [progressLine, setProgressLine] = useState(null)
+  const [removeArmed, setRemoveArmed] = useState(null)
   const [removingName, setRemovingName] = useState(null)
   const [removedCount, setRemovedCount] = useState(0)
   const [envReady, setEnvReady] = useState(true)
@@ -1182,6 +1183,20 @@ function MarketSection(props) {
     if (typeof props.openAgentSession === 'function') props.openAgentSession(prompt)
   }, [installed, t, props.openAgentSession])
 
+  // 卸载确认态：点「卸载」后按钮就地变「确认卸载？」；点击页面其他
+  // 任何地方（不含确认按钮本身）则还原回「卸载」，下次重新确认。
+  useEffect(() => {
+    if (removeArmed === null) return
+    const onDocClick = (e) => {
+      const target = e.target
+      const btn = target && typeof target.closest === 'function' ? target.closest('button') : null
+      if (btn !== null && btn.classList.contains('dshm-armed')) return
+      setRemoveArmed(null)
+    }
+    document.addEventListener('click', onDocClick, true)
+    return () => document.removeEventListener('click', onDocClick, true)
+  }, [removeArmed])
+
   // Recover an install whose HTTP response was lost (page navigated away or
   // the connection dropped): the pending marker survives in sessionStorage and
   // the poll below converges the button state from the host's ground truth.
@@ -1298,6 +1313,7 @@ function MarketSection(props) {
   }, [refreshInstalled, t])
 
   const doUninstall = useCallback((name) => {
+    setRemoveArmed(null)
     setInstallError(null)
     setRemovingName(name)
     fetch('/dsh-plugin-market/uninstall', {
@@ -1359,13 +1375,14 @@ function MarketSection(props) {
                   onClick: () => doUpdate(inKey),
                 }, t('update')),
                 !marketSelf && (removingName === inKey
-                  ? h('button', { className: 'dshm-btn danger busy', disabled: true },
-                      t('uninstalling'))
-                  : h('button', {
-                      className: 'dshm-btn danger',
-                      disabled: busyUrl !== null || updatingName !== null || removingName !== null,
-                      onClick: () => doUninstall(inKey),
-                    }, t('uninstall'))))
+                  ? h('button', { className: 'dshm-btn danger busy', disabled: true }, t('uninstalling'))
+                  : removeArmed === inKey
+                    ? h('button', { className: 'dshm-btn danger armed dshm-armed', onClick: () => doUninstall(inKey) }, t('confirmRemove'))
+                    : h('button', {
+                        className: 'dshm-btn danger',
+                        disabled: busyUrl !== null || updatingName !== null || removingName !== null,
+                        onClick: () => setRemoveArmed(inKey),
+                      }, t('uninstall'))))
             : busy
               ? h('button', { className: 'dshm-btn primary busy', disabled: true },
                   t('installing'))
@@ -1532,13 +1549,14 @@ function MarketSection(props) {
             }, t('update')),
             name !== 'dsh-plugin-market' && name !== 'dsh-plugin-market' && (
               removingName === name
-                ? h('button', { className: 'dshm-btn danger busy', disabled: true },
-                    t('uninstalling'))
-                : h('button', {
-                    className: 'dshm-btn danger',
-                    disabled: removingName !== null || busyUrl !== null || updatingName !== null,
-                    onClick: () => doUninstall(name),
-                  }, t('uninstall'))),
+                ? h('button', { className: 'dshm-btn danger busy', disabled: true }, t('uninstalling'))
+                : removeArmed === name
+                  ? h('button', { className: 'dshm-btn danger armed dshm-armed', onClick: () => doUninstall(name) }, t('confirmRemove'))
+                  : h('button', {
+                      className: 'dshm-btn danger',
+                      disabled: removingName !== null || busyUrl !== null || updatingName !== null,
+                      onClick: () => setRemoveArmed(name),
+                    }, t('uninstall'))),
           )
         }))
 
