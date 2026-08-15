@@ -97,6 +97,10 @@ const zh = {
   auditHooks: '安装期脚本钩子',
   auditHookBlock: '包含安装期脚本，为安全起见已阻止（这类脚本会在安装时以你的身份执行任意命令）',
   auditReviewHint: '把插件名告诉 Agent，可人工复核源码后再决定是否放行',
+  forceInstall: '仍然安装',
+  forceUpdate: '仍然更新',
+  forceInstallConfirm: '确认强制安装？风险自负',
+  forceInstallHint: '审计未通过仍继续安装，风险由你自己承担',
   auditGateOff: '审计闸门已关闭（DSHMARKET_AUDIT_GATE=off），社区来源不可安装',
   auditNoFindings: '未发现高危项（可能因钩子或审计不可用而阻止）',
   communityBadge: '社区',
@@ -219,6 +223,10 @@ const en = {
   auditHooks: 'Install-time script hooks',
   auditHookBlock: 'Contains install-time scripts — blocked for safety (they run arbitrary commands as you during install)',
   auditReviewHint: 'Tell the Agent this plugin name — it can review the source manually before you decide',
+  forceInstall: 'Install anyway',
+  forceUpdate: 'Update anyway',
+  forceInstallConfirm: 'Force install? You take the risk',
+  forceInstallHint: 'Installing despite the failed audit — you take the risk',
   auditGateOff: 'Audit gate is off (DSHMARKET_AUDIT_GATE=off) — community sources cannot be installed',
   auditNoFindings: 'No high-risk findings (blocked by hooks or an unavailable audit)',
   communityBadge: 'community',
@@ -393,6 +401,8 @@ const CSS = `
 .dshm-pill.block{background:color-mix(in srgb,var(--dsw-alias-state-error-primary,#dc2626) 10%,transparent);color:var(--dsw-alias-state-error-primary,#dc2626)}
 .dshm-audit-title{font-size:14px;font-weight:400;line-height:22px;color:var(--dsw-alias-label-primary,#1f2328)}
 .dshm-audit-desc{font-size:12px;font-weight:400;line-height:18px;color:var(--dsw-alias-label-tertiary,#9ca3af)}
+.dshm-audit-acts{display:flex;align-items:center;gap:8px;margin-top:10px;padding-top:10px;border-top:1px dashed var(--dsw-alias-border-l2,#e5e7eb)}
+.dshm-audit-acts .dshm-btn.danger{font-weight:600}
 .dshm-perm-tags{display:flex;flex-wrap:wrap;gap:6px;margin:6px 0}
 .dshm-top{position:absolute;right:18px;bottom:18px;z-index:20;width:36px;height:36px;border-radius:18px;border:1px solid var(--dsw-alias-border-l2,#e5e7eb);background:var(--dsw-alias-bg-layer-1,#fff);color:var(--dsw-alias-label-secondary,#6b7280);font-size:16px;cursor:pointer;box-shadow:0 4px 14px rgba(0,0,0,.12);display:flex;align-items:center;justify-content:center}
 .dshm-top:hover{color:var(--dsw-alias-state-business-primary,#4f6ef7)}
@@ -1024,7 +1034,7 @@ function MarketSection(props) {
     return []
   }, [searchResults, searchQuery, q])
 
-  const doInstall = useCallback((plugin) => {
+  const doInstall = useCallback((plugin, force) => {
     setConfirming(null)
     setInstallError(null)
     setAuditBlock(null)
@@ -1033,7 +1043,7 @@ function MarketSection(props) {
     fetch('/dsh-plugin-market/install', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ url: plugin.url }),
+      body: JSON.stringify({ url: plugin.url, force: force === true }),
     })
       .then(res => res.json().then(body => ({ status: res.status, body })))
       .then(({ status, body }) => {
@@ -1049,7 +1059,7 @@ function MarketSection(props) {
           if (Array.isArray(body.bundleless) && body.bundleless.length > 0) setBundleless(body.bundleless)
           refreshInstalled()
         } else if (body.audit !== undefined && body.audit !== null) {
-          setAuditBlock({ name: plugin.name, audit: body.audit, hooks: Array.isArray(body.hooks) ? body.hooks : [] })
+          setAuditBlock({ name: plugin.name, audit: body.audit, hooks: Array.isArray(body.hooks) ? body.hooks : [], plugin })
         } else {
           const text = v => typeof v === 'string' ? v : (v && typeof v.text === 'string') ? v.text : v == null ? '' : JSON.stringify(v)
           const detail = text(body.error) || text(body.stderr) || text(body.stdout) || ('exit ' + body.exitCode)
@@ -1063,14 +1073,14 @@ function MarketSection(props) {
       .finally(() => setBusyUrl(null))
   }, [refreshInstalled, t])
 
-  const doUpdate = useCallback((name) => {
+  const doUpdate = useCallback((name, force) => {
     setInstallError(null)
     setAuditBlock(null)
     setUpdatingName(name)
     fetch('/dsh-plugin-market/update', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ name }),
+      body: JSON.stringify({ name, force: force === true }),
     })
       .then(res => res.json().then(body => ({ status: res.status, body })))
       .then(({ status, body }) => {
@@ -1078,7 +1088,7 @@ function MarketSection(props) {
           setUpdatedNames(names => names.concat(name))
           refreshInstalled()
         } else if (body.audit !== undefined && body.audit !== null) {
-          setAuditBlock({ name, audit: body.audit, hooks: Array.isArray(body.hooks) ? body.hooks : [] })
+          setAuditBlock({ name, audit: body.audit, hooks: Array.isArray(body.hooks) ? body.hooks : [], update: true })
         } else {
           const text = v => typeof v === 'string' ? v : (v && typeof v.text === 'string') ? v.text : v == null ? '' : JSON.stringify(v)
           const detail = text(body.error) || text(body.stderr) || text(body.stdout) || ('exit ' + body.exitCode)
@@ -1478,7 +1488,18 @@ function MarketSection(props) {
                   h('code', { className: 'dshm-entryValue' }, (f.file || '?') + (f.line != null ? ':' + f.line : '')),
                   ' ', String(f.evidence || f.detail || '').slice(0, 160))))))
         : h('div', { className: 'dshm-audit-desc', style: { marginTop: '6px' } }, t('auditNoFindings')),
-      h('div', { className: 'dshm-audit-desc', style: { marginTop: '6px' } }, t('auditReviewHint'))),
+      h('div', { className: 'dshm-audit-desc', style: { marginTop: '6px' } }, t('auditReviewHint')),
+      (auditBlock.plugin || auditBlock.update) && h('div', { className: 'dshm-audit-acts' },
+        auditBlock.confirming
+          ? h(React.Fragment, null,
+              h('button', {
+                className: 'dshm-btn danger armed',
+                onClick: () => auditBlock.update
+                  ? doUpdate(auditBlock.name, true)
+                  : doInstall(auditBlock.plugin, true),
+              }, t('forceInstallConfirm')),
+              h('button', { className: 'dshm-btn ghost', onClick: () => setAuditBlock({ ...auditBlock, confirming: false }) }, t('cancel')))
+          : h('button', { className: 'dshm-btn danger', onClick: () => setAuditBlock({ ...auditBlock, confirming: true }) }, auditBlock.update ? t('forceUpdate') : t('forceInstall')))),
     installError !== null && h('div', { className: 'dshm-err' }, installError),
     h('div', {
       className: 'dshm-body',
