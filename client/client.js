@@ -1,9 +1,9 @@
-window.__ModuleLoader__.load({ id: "dshmarket", factory: (require) => {
+window.__ModuleLoader__.load({ id: "dsh-plugin-market", factory: (require) => {
 var module = { exports: {} }; var exports = module.exports;
 'use strict'
 
 /**
- * dsh-market client: registers a "Market" settings section rendering the
+ * dsh-plugin-market client: registers a "Market" settings section rendering the
  * plugin market UI, styled after the official settings plugin inventory
  * (compact two-column collapsible cards, official design tokens) and the
  * official permission/approval presentation for audit results. Hand-authored
@@ -15,7 +15,7 @@ const React = require('react')
 const h = React.createElement
 const { useState, useEffect, useMemo, useCallback } = React
 
-const NS = 'dsh-market'
+const NS = 'dsh-plugin-market'
 
 const zh = {
   nav: '插件市场',
@@ -400,10 +400,10 @@ const CSS = `
 `
 
 function injectStyles() {
-  if (document.querySelector('style[data-plugin-css="dsh-market/market"]') !== null) return
+  if (document.querySelector('style[data-plugin-css="dsh-plugin-market/market"]') !== null) return
   const tag = document.createElement('style')
-  tag.dataset.plugin = "dshmarket"
-  tag.dataset.pluginCss = 'dsh-market/market'
+  tag.dataset.plugin = "dsh-plugin-market"
+  tag.dataset.pluginCss = 'dsh-plugin-market/market'
   tag.textContent = CSS
   document.head.appendChild(tag)
 }
@@ -723,7 +723,7 @@ function MarketSection(props) {
   useEffect(() => { sortRef.current = sort }, [sort])
 
   const refreshInstalled = useCallback((force) => {
-    fetch('/dsh-market/installed', { cache: 'no-store' })
+    fetch('/dsh-plugin-market/installed', { cache: 'no-store' })
       .then(res => res.json())
       .then(body => {
         setInstalled(body.installed || {})
@@ -731,14 +731,14 @@ function MarketSection(props) {
         setInstalledRepos(body.repos || {})
       })
       .catch(() => {})
-    fetch('/dsh-market/updates' + (force === true ? '?force=1' : ''), { cache: 'no-store' })
+    fetch('/dsh-plugin-market/updates' + (force === true ? '?force=1' : ''), { cache: 'no-store' })
       .then(res => res.json())
       .then(body => setUpdates(body.updates || {}))
       .catch(() => {})
   }, [])
 
   const refreshEntries = useCallback(() => {
-    fetch('/dsh-market/entries', { cache: 'no-store' })
+    fetch('/dsh-plugin-market/entries', { cache: 'no-store' })
       .then(res => res.json())
       .then(body => setEntries(Array.isArray(body.entries) ? body.entries : []))
       .catch(() => {})
@@ -748,7 +748,7 @@ function MarketSection(props) {
   const doToggle = useCallback((rowId, enable) => {
     setTogglingId(rowId)
     setInstallError(null)
-    fetch('/dsh-market/toggle', {
+    fetch('/dsh-plugin-market/toggle', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ id: rowId, enable }),
@@ -768,7 +768,7 @@ function MarketSection(props) {
 
   /** 拉取我的精选列表。 */
   const refreshFavorites = useCallback(() => {
-    fetch('/dsh-market/favorites', { cache: 'no-store' })
+    fetch('/dsh-plugin-market/favorites', { cache: 'no-store' })
       .then(res => res.json())
       .then(body => setFavorites(Array.isArray(body.items) ? body.items : []))
       .catch(() => {})
@@ -778,7 +778,7 @@ function MarketSection(props) {
   const toggleFavorite = useCallback((plugin) => {
     const url = plugin.url
     const isFav = favorites.some(f => f.url === url)
-    fetch('/dsh-market/favorites', {
+    fetch('/dsh-plugin-market/favorites', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify(isFav ? { action: 'remove', url } : { action: 'add', plugin }),
@@ -791,7 +791,7 @@ function MarketSection(props) {
   useEffect(() => {
     injectStyles()
     refreshFavorites()
-    fetch('/dsh-market/status', { cache: 'no-store' })
+    fetch('/dsh-plugin-market/status', { cache: 'no-store' })
       .then(res => res.json())
       .then(status => {
         setEnvReady(status.pnpm !== false)
@@ -833,7 +833,7 @@ function MarketSection(props) {
 
   /** Raw GitHub-side page fetch; mutates only the meta ref. */
   const fetchPageRaw = useCallback((query, page) => {
-    const url = '/dsh-market/search?q=' + encodeURIComponent(query) + '&lang=' + lang
+    const url = '/dsh-plugin-market/search?q=' + encodeURIComponent(query) + '&lang=' + lang
       + (query === '' ? '&limit=50' : '&limit=20') + '&page=' + page
       + '&sort=' + (sortRef.current === 'new' ? 'new' : 'hot')
     return fetch(url, { cache: 'no-store' })
@@ -936,7 +936,7 @@ function MarketSection(props) {
   const fixEnv = useCallback(() => {
     setEnvFixing(true)
     setEnvFailed(false)
-    fetch('/dsh-market/setup-pnpm', { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' })
+    fetch('/dsh-plugin-market/setup-pnpm', { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' })
       .then(res => res.json())
       .then(body => {
         if (body.ok) setEnvReady(true)
@@ -949,7 +949,7 @@ function MarketSection(props) {
   /** Load a plugin's README into the in-market usage-instructions dialog. */
   const openReadme = useCallback((name) => {
     setReadmeView({ name, loading: true })
-    fetch('/dsh-market/readme?name=' + encodeURIComponent(name) + '&lang=' + lang, { cache: 'no-store' })
+    fetch('/dsh-plugin-market/readme?name=' + encodeURIComponent(name) + '&lang=' + lang, { cache: 'no-store' })
       .then(res => res.json())
       .then(body => {
         if (body.ok) setReadmeView({ name, content: body.content, source: body.source, repaired: body.repaired === true })
@@ -980,7 +980,7 @@ function MarketSection(props) {
       return
     }
     const timer = setInterval(() => {
-      fetch('/dsh-market/status', { cache: 'no-store' })
+      fetch('/dsh-plugin-market/status', { cache: 'no-store' })
         .then(res => res.json())
         .then(status => {
           if (status.active) {
@@ -1022,7 +1022,7 @@ function MarketSection(props) {
     setAuditBlock(null)
     setBusyUrl(plugin.url)
     sessionStorage.setItem('dshm-pending', JSON.stringify({ url: plugin.url }))
-    fetch('/dsh-market/install', {
+    fetch('/dsh-plugin-market/install', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ url: plugin.url }),
@@ -1059,7 +1059,7 @@ function MarketSection(props) {
     setInstallError(null)
     setAuditBlock(null)
     setUpdatingName(name)
-    fetch('/dsh-market/update', {
+    fetch('/dsh-plugin-market/update', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ name }),
@@ -1085,7 +1085,7 @@ function MarketSection(props) {
     setRemoveArmed(null)
     setInstallError(null)
     setRemovingName(name)
-    fetch('/dsh-market/uninstall', {
+    fetch('/dsh-plugin-market/uninstall', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ name }),
@@ -1120,7 +1120,7 @@ function MarketSection(props) {
     const letter = p.name.replace(/^@[^/]+\//, '').replace(/^dsh[-_]/i, '').charAt(0).toUpperCase() || 'P'
     const inKey = already ? installedKeyOf(p, installed) : null
     const updAvail = inKey !== null && updates[inKey] && updates[inKey].updateAvailable === true && !updatedNames.includes(inKey)
-    const marketSelf = inKey === 'dsh-market' || inKey === 'dshmarket'
+    const marketSelf = inKey === 'dsh-plugin-market' || inKey === 'dsh-plugin-market'
     return h('div', { key: p.url, className: 'dshm-richCard' },
       h('div', { className: 'dshm-richTop' },
         h('div', { className: 'dshm-av', style: { background: avatarColor(p.name) } }, letter),
@@ -1252,7 +1252,7 @@ function MarketSection(props) {
             ? t('installedAt') + ': ' + (fmtTime(timeInfo.installed) || '—') + '\n' + t('updatedAt') + ': ' + (fmtTime(timeInfo.updated) || '—')
             : ''
           const loaderRow = entries.find(r => r.name === name)
-          const isMarket = name === 'dsh-market' || name === 'dshmarket'
+          const isMarket = name === 'dsh-plugin-market' || name === 'dsh-plugin-market'
           const isPatchRow = specText.startsWith('patch:')
           const rowDisabled = loaderRow !== undefined && loaderRow.disabled === true
           return h('div', {
@@ -1300,7 +1300,7 @@ function MarketSection(props) {
               disabled: updatingName !== null || busyUrl !== null,
               onClick: () => doUpdate(name),
             }, t('update')),
-            name !== 'dsh-market' && name !== 'dshmarket' && (
+            name !== 'dsh-plugin-market' && name !== 'dsh-plugin-market' && (
               removingName === name
                 ? h('button', { className: 'dshm-btn danger busy', disabled: true }, t('uninstalling'))
                 : removeArmed === name
@@ -1371,7 +1371,7 @@ function MarketSection(props) {
       h('div', { style: { display: 'flex', alignItems: 'center', gap: '10px' } },
         h('h2', { className: 'dshm-title' }, t('nav')),
         (() => {
-          const self = installed['dshmarket'] !== undefined ? 'dshmarket' : 'dsh-market'
+          const self = installed['dsh-plugin-market'] !== undefined ? 'dsh-plugin-market' : 'dsh-plugin-market'
           return updates[self] && updates[self].updateAvailable && !updatedNames.includes(self)
             && h('button', {
               className: 'dshm-btn upd',
@@ -1382,7 +1382,7 @@ function MarketSection(props) {
         })()),
       h('div', { className: 'dshm-sub' },
         t('subtitle'), ' · ',
-        h('a', { className: 'dshm-src', href: '/dsh-market/logs', download: 'dsh-market-log.txt' }, t('exportLog'))),
+        h('a', { className: 'dshm-src', href: '/dsh-plugin-market/logs', download: 'dsh-plugin-market-log.txt' }, t('exportLog'))),
       h('label', { className: 'dshm-search' },
         searchIcon(),
         h('input', {
@@ -1475,10 +1475,10 @@ function MarketSection(props) {
     readmeModalEl)
 }
 
-exports.name = 'dsh-market'
+exports.name = 'dsh-plugin-market'
 exports.inject = ['slots', 'locale']
 exports.apply = function apply(ctx) {
-  ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'dsh-market: dictionaries')
+  ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'dsh-plugin-market: dictionaries')
   const t = ctx.locale.bind(NS)
 
   /** Close settings, jump to a fresh session and prefill its composer with
@@ -1544,8 +1544,8 @@ exports.apply = function apply(ctx) {
   }
   ctx.slots.inject('shell.overlay', () => ctx.slots.register({
     name: 'shell.overlay',
-    id: 'dsh-market-toast',
-    label: () => 'dsh-market',
+    id: 'dsh-plugin-market-toast',
+    label: () => 'DSH-Plugin-Market',
   }, InstallToast))
 }
 

@@ -1,4 +1,4 @@
-# dshmarket · 插件市场
+# DSH-Plugin-Market · 插件市场
 
 [English](README.md) | **中文**
 
@@ -38,7 +38,7 @@ dsh plugin --profile web add link:$(pwd)/DSH-Plugin-Market
 **方式三：npm**（后续发布后可用）
 
 ```sh
-dsh plugin --profile web add dshmarket
+dsh plugin --profile web add dsh-plugin-market
 ```
 
 安装后**重启 DeepSeek Harness**，打开 设置 → 插件市场。
@@ -73,7 +73,7 @@ lib/hot.js            安装后热挂载（免重启即用）
 lib/log.js            脱敏日志与导出
 lib/registry.js       精选目录（awesome-dsh-plugin.com，内置快照离线兜底）
 client/client.js      自包含 CJS 客户端（设置页 UI、审计报告卡、Agent 协助跳转）
-cordis.patch.yml      bundle patch：向 profile 插入 dsh-market 行
+cordis.patch.yml      bundle patch：向 profile 插入 dsh-plugin-market 行
 ```
 
 **审计闸门（fail-closed）**：安装/更新前，把即将安装的确切产物（npm dist tarball 或 GitHub codeload HEAD）下载到临时目录，纯静态扫描（绝不执行）：

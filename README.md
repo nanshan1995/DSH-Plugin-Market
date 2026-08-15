@@ -1,4 +1,4 @@
-# dshmarket · Plugin Market
+# DSH-Plugin-Market · Plugin Market
 
 **English** | [中文](README.zh.md)
 
@@ -10,8 +10,9 @@ Plugin market inside DeepSeek Harness: browse, search, one-click install — eve
 
 ## Features
 
-- Curated catalog (awesome-dsh-plugin) + **live full browse** of the GitHub `dsh-plugin` topic (ranked by stars / latest, paginated)
+- **Live community browse** of the GitHub `dsh-plugin` topic (ranked by stars / latest, paginated) — no third-party catalog dependency
 - **Cross-language search**: Chinese queries find English plugins and vice versa — built-in thesaurus **plus real-time LLM translation** via the host model
+- **My Favorites**: ☆-save any community plugin into your own list, with the same install / update / uninstall / README actions — stored locally in the profile, no third-party data
 - Pre-install audit of the exact published artifact (dynamic exec, credential access, install scripts are hard-blocked); blocked installs show an audit report card
 - Official design language (`--dsw-alias-*` tokens); audit results in the official "request approval" pill style
 - Update checks, one-click updates (audited too), two-step uninstall, hot mounting, log export, self-service pnpm setup
@@ -38,15 +39,16 @@ dsh plugin --profile web add link:$(pwd)/DSH-Plugin-Market
 **Option 3: npm** (once published)
 
 ```sh
-dsh plugin --profile web add dshmarket
+dsh plugin --profile web add dsh-plugin-market
 ```
 
 Restart DeepSeek Harness, then open Settings → Plugin Market.
 
 ## Usage
 
-- **Discover**: curated catalog by default; switch to **All community** to browse the whole GitHub topic ranked by stars (50 per load, "Load more" to page; GitHub exposes at most 1000 results — the real total is shown, and search reaches the rest)
+- **Discover**: browse the whole GitHub `dsh-plugin` topic ranked by stars (50 per load, "Load more" to page; GitHub exposes at most 1000 results — the real total is shown, and search reaches the rest)
 - **Search**: live keyword search with zh/en thesaurus **plus LLM translation**; the UI shows "Translated as: …"
+- **My Favorites**: ☆ on any community card saves it into your personal list (stored in the profile, survives restarts); favorites support install / update / uninstall / README exactly like the community list
 - **Install**: click Install → the real source is downloaded and statically audited → auto-installs on pass; on block, an audit card is shown (hand it to the Agent for manual review)
 - **Installed**: sort by install time (toggle direction), hover/select to see install & update times; **hot enable/disable (no restart)**, update and uninstall entry points; disabled plugins dim with a "Disabled" tag and stay disabled across restarts; the market itself cannot be disabled
 - **Installed rows link to their git**: the spec text becomes a link and a "Source" button opens the repo — resolved from `package.json` `repository` (or GitHub `homepage`), the `github:` spec, or a README scan when the package declares no repository (e.g. dsh-plugin-audit)
@@ -57,7 +59,7 @@ Restart DeepSeek Harness, then open Settings → Plugin Market.
 
 | Env var | Effect |
 |---|---|
-| `DSHMARKET_AUDIT_GATE=off` | Disables the audit gate (community sources are then refused outright — fail-closed) |
+| `DSHMARKET_AUDIT_GATE=off` | Disables the audit gate (all sources are then refused outright — fail-closed) |
 | `DSHMARKET_GITHUB_TOKEN` | Raises the GitHub search quota (unauthenticated is ~10 req/min) |
 | `DSHMARKET_TRANSLATE_PROVIDER` / `DSHMARKET_TRANSLATE_MODEL` | Model used for query translation (defaults `deepseek-official` / `deepseek-v4-flash`, using the host's configured LLM credentials) |
 
@@ -67,13 +69,12 @@ A standard dsh-plugin (`dsh.bundle` + `dsh.client`):
 
 ```
 lib/index.js          host entry: injects webServer (+ optional llm), mounts HTTP routes
-lib/routes.js         routes: registry/search/install/update/uninstall/status/updates/logs/setup-pnpm
+lib/routes.js         routes: search/install/update/uninstall/status/favorites/readme/updates/logs/setup-pnpm
 lib/audit-scanner.js  bundled static audit engine (from dsh-plugin-audit's scanner)
 lib/hot.js            hot-mount after install (no restart needed)
 lib/log.js            sanitized logging and export
-lib/registry.js       curated catalog (awesome-dsh-plugin.com, bundled snapshot fallback)
 client/client.js      self-contained CJS client (settings UI, audit card, agent handoff)
-cordis.patch.yml      bundle patch: inserts the dsh-market row into the profile
+cordis.patch.yml      bundle patch: inserts the dsh-plugin-market row into the profile
 ```
 
 **Audit gate (fail-closed)**: before install/update, the exact artifact that would be installed (npm dist tarball or GitHub codeload HEAD) is downloaded into a temp dir and scanned statically — code is never executed:
@@ -83,7 +84,9 @@ cordis.patch.yml      bundle patch: inserts the dsh-market row into the profile
 - Additional hard rules: `preinstall`/`install`/`postinstall` (plus `prepare` for git installs) are always blocked; any audit failure blocks
 - The report card shows risk level, permission chips and each finding (file:line + evidence)
 
-**Search & translation**: GitHub search API (paged, sortable) merged with bilingual matches against the curated catalog; the query is expanded by the built-in zh/en thesaurus and then translated live by the host LLM (10-min cache, 6s timeout, silent fallback to the thesaurus). Translated terms join the GitHub OR-query and the catalog matching.
+**Search & translation**: GitHub search API (paged, sortable by stars/updated); the query is expanded by the built-in zh/en thesaurus and then translated live by the host LLM (10-min cache, 6s timeout, silent fallback to the thesaurus). Translated terms join the GitHub OR-query.
+
+**Favorites**: stored as a JSON file in the profile (`dsh-plugin-market-favorites.json`), so the personal list survives restarts without any third-party catalog dependency.
 
 **Pagination**: 50 per load for community browse, 20 for search; the client's "Load more" appends exactly one page of new items (drift-compensating backfill), shows loaded/real totals and notes GitHub's 1000-result retrieval cap.
 
