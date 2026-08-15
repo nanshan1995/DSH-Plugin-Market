@@ -46,7 +46,7 @@ Restart DeepSeek Harness, then open Settings → Plugin Market.
 - **Discover**: curated catalog by default; switch to **All community** to browse the whole GitHub topic ranked by stars (50 per load, "Load more" to page; GitHub exposes at most 1000 results — the real total is shown, and search reaches the rest)
 - **Search**: live keyword search with zh/en thesaurus **plus LLM translation**; the UI shows "Translated as: …"
 - **Install**: click Install → the real source is downloaded and statically audited → auto-installs on pass; on block, an audit card is shown (hand it to the Agent for manual review)
-- **Installed**: sort by install time (toggle direction), hover/select to see install & update times; update and uninstall entry points
+- **Installed**: sort by install time (toggle direction), hover/select to see install & update times; **hot enable/disable (no restart)**, update and uninstall entry points; disabled plugins dim with a "Disabled" tag and stay disabled across restarts; the market itself cannot be disabled
 - **Plugins without a `dsh.bundle` declaration**: a yellow notice appears after install with a **"Let the Agent handle it"** button — it opens a fresh session with a pre-filled diagnosis task so the Agent finishes the wiring for you
 
 ## Configuration
