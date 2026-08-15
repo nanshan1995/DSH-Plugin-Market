@@ -49,6 +49,8 @@ const zh = {
   upToDate: '已是最新',
   linkedDev: '本地开发链接',
   patchLoaded: 'patch 行加载',
+  readmeEmpty: '该插件未提供 README 使用说明',
+  readmeFail: '使用说明加载失败',
   disable: '停用',
   enable: '启用',
   disabledTag: '已停用',
@@ -158,6 +160,8 @@ const en = {
   upToDate: 'Up to date',
   linkedDev: 'linked (dev)',
   patchLoaded: 'patch row',
+  readmeEmpty: 'No README provided for this plugin',
+  readmeFail: 'Failed to load the README',
   disable: 'Disable',
   enable: 'Enable',
   disabledTag: 'Disabled',
@@ -303,6 +307,22 @@ const CSS = `
 .dshm-irow.dshm-irowOff{opacity:.55}
 .dshm-irow.dshm-irowOff:hover{opacity:.85}
 .dshm-irowTime{font-size:11px;line-height:18px;color:var(--dsw-alias-state-success-primary,#16a34a);margin-top:2px;font-variant-numeric:tabular-nums}
+.dshm-readmeModal{width:min(760px,94vw);display:flex;flex-direction:column;max-height:80vh}
+.dshm-readmeHead{display:flex;align-items:center;gap:8px;margin-bottom:10px;flex-shrink:0}
+.dshm-readmeHead h3{margin:0}
+.dshm-readme{max-height:62vh;overflow:auto;font-size:13px;line-height:1.65;color:var(--dsw-alias-label-primary,#1f2328);padding-right:4px}
+.dshm-readme h1,.dshm-readme h2{font-size:16px;font-weight:600;line-height:24px;margin:14px 0 6px;border-bottom:1px solid var(--dsw-alias-border-l2,#e5e7eb);padding-bottom:4px}
+.dshm-readme h3{font-size:14px;font-weight:600;margin:12px 0 4px}
+.dshm-readme h4,.dshm-readme h5,.dshm-readme h6{font-size:13px;font-weight:600;margin:10px 0 4px}
+.dshm-readme p{margin:6px 0}
+.dshm-readme ul,.dshm-readme ol{margin:6px 0;padding-left:22px}
+.dshm-readme li{margin:2px 0}
+.dshm-readme pre{background:var(--dsw-alias-bg-module-platform,#f7f8fa);border:1px solid var(--dsw-alias-border-l2,#e5e7eb);border-radius:8px;padding:10px 12px;overflow:auto;font-family:var(--ds-font-family-code,ui-monospace,Menlo,monospace);font-size:12px;line-height:1.5}
+.dshm-readme code{font-family:var(--ds-font-family-code,ui-monospace,Menlo,monospace);font-size:12px;background:color-mix(in srgb,var(--dsw-alias-bg-module-platform,#f7f8fa) 80%,transparent);border-radius:4px;padding:0 4px}
+.dshm-readme pre code{background:none;padding:0}
+.dshm-readme a{color:var(--dsw-alias-state-business-primary,#4f6ef7);text-decoration:none}
+.dshm-readme a:hover{text-decoration:underline}
+.dshm-readme hr{border:none;border-top:1px solid var(--dsw-alias-border-l2,#e5e7eb);margin:12px 0}
 .dshm-irowMain{min-width:0;flex:1}
 .dshm-irowTitle{font-size:14px;font-weight:600;line-height:20px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .dshm-irowVersion{font-size:11px;font-weight:400;color:var(--dsw-alias-label-tertiary,#9ca3af)}
@@ -500,6 +520,88 @@ function searchIcon() {
     h('path', { d: 'M10.5 10.5 14 14', stroke: 'currentColor', strokeWidth: 1.5, strokeLinecap: 'round' }))
 }
 
+/** Minimal safe markdown → React nodes (headings, code, lists, links, bold). */
+function inlineMd(text, prefix) {
+  const out = []
+  const re = /(\*\*[^*]+\*\*|`[^`]+`|\[[^\]]+\]\([^)]+\))/g
+  let last = 0
+  let m
+  let k = 0
+  while ((m = re.exec(text)) !== null) {
+    if (m.index > last) out.push(text.slice(last, m.index))
+    const tok = m[0]
+    if (tok.startsWith('**')) out.push(h('strong', { key: prefix + '-' + (k++) }, tok.slice(2, -2)))
+    else if (tok.startsWith('`')) out.push(h('code', { key: prefix + '-' + (k++) }, tok.slice(1, -1)))
+    else {
+      const lm = /^\[([^\]]+)\]\(([^)]+)\)$/.exec(tok)
+      if (lm) out.push(h('a', { key: prefix + '-' + (k++), href: lm[2], target: '_blank', rel: 'noreferrer' }, lm[1]))
+      else out.push(tok)
+    }
+    last = m.index + tok.length
+  }
+  if (last < text.length) out.push(text.slice(last))
+  return out
+}
+
+function renderMarkdown(md) {
+  const lines = String(md).split('\n')
+  const blocks = []
+  let key = 0
+  let i = 0
+  const blank = l => /^\s*$/.test(l)
+  const isBlockStart = l => /^\s*```/.test(l) || /^#{1,6}\s/.test(l) || /^\s*[-*]\s/.test(l)
+    || /^\s*\d+[.)]\s/.test(l) || /^\s*(-{3,}|\*{3,})$/.test(l)
+  while (i < lines.length) {
+    if (blank(lines[i])) { i++; continue }
+    if (/^\s*```/.test(lines[i])) {
+      const buf = []
+      i++
+      while (i < lines.length && !/^\s*```/.test(lines[i])) { buf.push(lines[i]); i++ }
+      i++
+      blocks.push(h('pre', { key: key++ }, h('code', null, buf.join('\n'))))
+      continue
+    }
+    const hd = /^(#{1,6})\s+(.*)$/.exec(lines[i])
+    if (hd) {
+      blocks.push(h('h' + Math.min(hd[1].length + 2, 6), { key: key++ }, inlineMd(hd[2], 'h' + key)))
+      i++
+      continue
+    }
+    if (/^\s*(-{3,}|\*{3,})$/.test(lines[i])) { blocks.push(h('hr', { key: key++ })); i++; continue }
+    const ul = /^\s*[-*]\s+(.*)$/.exec(lines[i])
+    if (ul) {
+      const items = []
+      while (i < lines.length) {
+        const m2 = /^\s*[-*]\s+(.*)$/.exec(lines[i])
+        if (!m2) break
+        items.push(h('li', { key: 'li' + items.length }, inlineMd(m2[1], 'li' + items.length)))
+        i++
+      }
+      blocks.push(h('ul', { key: key++ }, items))
+      continue
+    }
+    const ol = /^\s*\d+[.)]\s+(.*)$/.exec(lines[i])
+    if (ol) {
+      const items = []
+      while (i < lines.length) {
+        const m2 = /^\s*\d+[.)]\s+(.*)$/.exec(lines[i])
+        if (!m2) break
+        items.push(h('li', { key: 'li' + items.length }, inlineMd(m2[1], 'li' + items.length)))
+        i++
+      }
+      blocks.push(h('ol', { key: key++ }, items))
+      continue
+    }
+    const para = []
+    while (i < lines.length && !blank(lines[i]) && !isBlockStart(lines[i])) {
+      para.push(lines[i].trim())
+      i++
+    }
+    if (para.length > 0) blocks.push(h('p', { key: key++ }, inlineMd(para.join(' '), 'p' + key)))
+  }
+  return blocks
+}
+
 function MarketSection(props) {
   const t = props.t
   const localeSnap = React.useSyncExternalStore(
@@ -550,6 +652,7 @@ function MarketSection(props) {
   const [selectedName, setSelectedName] = useState(null)
   const [entries, setEntries] = useState([])
   const [togglingId, setTogglingId] = useState(null)
+  const [readmeView, setReadmeView] = useState(null)
   const [gateOn, setGateOn] = useState(true)
   const bodyRef = React.useRef(null)
   // Pagination bookkeeping kept in refs so "load more" always appends exactly
@@ -776,6 +879,18 @@ function MarketSection(props) {
       .catch(() => setEnvFailed(true))
       .finally(() => setEnvFixing(false))
   }, [])
+
+  /** Load a plugin's README into the in-market usage-instructions dialog. */
+  const openReadme = useCallback((name) => {
+    setReadmeView({ name, loading: true })
+    fetch('/dsh-market/readme?name=' + encodeURIComponent(name) + '&lang=' + lang, { cache: 'no-store' })
+      .then(res => res.json())
+      .then(body => {
+        if (body.ok) setReadmeView({ name, content: body.content, source: body.source })
+        else setReadmeView({ name, description: body.description || '' })
+      })
+      .catch(() => setReadmeView({ name, error: true }))
+  }, [lang])
 
   /** Hand the plugin's setup off to the Agent: jump to a fresh session with
    *  a pre-filled diagnosis prompt. */
@@ -1109,7 +1224,7 @@ function MarketSection(props) {
                   onClick: () => doToggle(loaderRow.id, rowDisabled),
                 }, rowDisabled ? t('enable') : t('disable')),
             !isMarket && loaderRow === undefined && h('span', { className: 'dshm-configTag', title: t('notPluginHint') }, t('notPlugin')),
-            repoUrl !== null && h('a', { className: 'dshm-btn ghost', href: repoUrl + '#readme', target: '_blank', rel: 'noreferrer' }, t('readme')),
+            h('button', { className: 'dshm-btn ghost', onClick: () => openReadme(name) }, t('readme')),
             updAvailable && h('button', {
               className: 'dshm-btn upd',
               disabled: updatingName !== null || busyUrl !== null,
@@ -1254,7 +1369,21 @@ function MarketSection(props) {
         h('p', null, '⚠️ ' + t('confirmWarn')),
         h('div', { className: 'dshm-acts' },
           h('button', { className: 'dshm-btn ghost', onClick: () => setConfirming(null) }, t('cancel')),
-          h('button', { className: 'dshm-btn primary', onClick: () => doInstall(confirming) }, t('install'))))))
+          h('button', { className: 'dshm-btn primary', onClick: () => doInstall(confirming) }, t('install')))))),
+    readmeView !== null && h('div', { className: 'dshm-mask', onClick: e => { if (e.target === e.currentTarget) setReadmeView(null) } },
+      h('div', { className: 'dshm-modal dshm-readmeModal' },
+        h('div', { className: 'dshm-readmeHead' },
+          h('h3', null, t('readme') + ' · ' + readmeView.name + (readmeView.source ? ' — ' + readmeView.source : '')),
+          h('span', { className: 'dshm-grow' }),
+          h('button', { className: 'dshm-btn ghost', onClick: () => setReadmeView(null) }, '✕')),
+        h('div', { className: 'dshm-readme' },
+          readmeView.loading
+            ? h('div', { className: 'dshm-loading' }, h('span', { className: 'dshm-spin' }))
+            : readmeView.error
+              ? h('div', { className: 'dshm-empty' }, t('readmeFail'))
+              : readmeView.content
+                ? renderMarkdown(readmeView.content)
+                : h('div', { className: 'dshm-empty' }, t('readmeEmpty') + (readmeView.description ? ' — ' + readmeView.description : '')))))
 }
 
 exports.name = 'dsh-market'
