@@ -298,6 +298,7 @@ const CSS = `
 .dshm-acts{display:flex;justify-content:flex-end;align-items:center;gap:8px;margin-top:10px}
 .dshm-richCard{border:1px solid var(--dsw-alias-border-l2,#e5e7eb);background:var(--dsw-alias-bg-layer-3,#fff);border-radius:10px;min-width:0;padding:12px 14px;display:flex;flex-direction:column;gap:8px}
 .dshm-richTop{display:flex;align-items:center;gap:10px;min-width:0}
+.dshm-cardActs{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
 .dshm-av{width:32px;height:32px;border-radius:8px;display:grid;place-items:center;font-weight:600;color:#fff;font-size:14px;flex-shrink:0}
 .dshm-richHead{min-width:0;flex:1}
 .dshm-richTitle{font-size:14px;font-weight:600;line-height:20px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -309,6 +310,7 @@ const CSS = `
 .dshm-irow.dshm-irowOff{opacity:.55}
 .dshm-irow.dshm-irowOff:hover{opacity:.85}
 .dshm-irowTime{font-size:11px;line-height:18px;color:var(--dsw-alias-state-success-primary,#16a34a);margin-top:2px;font-variant-numeric:tabular-nums}
+.dshm-irowTimeRow{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .dshm-readmeModal{width:min(760px,94vw);display:flex;flex-direction:column;max-height:80vh}
 .dshm-readmeHead{display:flex;align-items:center;gap:8px;margin-bottom:10px;flex-shrink:0}
 .dshm-readmeHead h3{margin:0}
@@ -485,10 +487,26 @@ function fmtTime(ms) {
 function isInstalled(plugin, installed) {
   if (installed[plugin.name] !== undefined) return true
   if (plugin.npm && installed[plugin.npm] !== undefined) return true
+  const bare = plugin.name.replace(/^@[^/]+\//, '')
+  if (Object.keys(installed).some(key => key.replace(/^@[^/]+\//, '') === bare)) return true
   const repo = repoOf(plugin.url)
   if (repo === null) return false
   const needle = ('github:' + repo).toLowerCase()
   return Object.values(installed).some(spec => String(spec).toLowerCase().includes(needle))
+}
+
+/** The installed-map key under which this catalog plugin lives (null when not installed). */
+function installedKeyOf(plugin, installed) {
+  if (installed[plugin.name] !== undefined) return plugin.name
+  if (plugin.npm && installed[plugin.npm] !== undefined) return plugin.npm
+  const bare = plugin.name.replace(/^@[^/]+\//, '')
+  const bareHit = Object.keys(installed).find(key => key.replace(/^@[^/]+\//, '') === bare)
+  if (bareHit !== undefined) return bareHit
+  const repo = repoOf(plugin.url)
+  if (repo === null) return null
+  const needle = ('github:' + repo).toLowerCase()
+  const hit = Object.keys(installed).find(key => String(installed[key]).toLowerCase().includes(needle))
+  return hit ?? null
 }
 
 function riskLabel(risk, t) {
@@ -1079,6 +1097,9 @@ function MarketSection(props) {
     const busy = busyUrl === p.url
     const catLabel = (data !== null && data.categories[p.category] && (data.categories[p.category][lang] || data.categories[p.category].en)) || p.category || ''
     const letter = p.name.replace(/^@[^/]+\//, '').replace(/^dsh[-_]/i, '').charAt(0).toUpperCase() || 'P'
+    const inKey = already ? installedKeyOf(p, installed) : null
+    const updAvail = inKey !== null && updates[inKey] && updates[inKey].updateAvailable === true && !updatedNames.includes(inKey)
+    const marketSelf = inKey === 'dsh-market' || inKey === 'dshmarket'
     return h('div', { key: p.url, className: 'dshm-richCard' },
       h('div', { className: 'dshm-richTop' },
         h('div', { className: 'dshm-av', style: { background: avatarColor(p.name) } }, letter),
@@ -1092,7 +1113,26 @@ function MarketSection(props) {
         done
           ? h('span', { className: 'dshm-btn done' }, t('installedBadge'))
           : already
-            ? h('span', { className: 'dshm-btn done' }, t('alreadyInstalled'))
+            ? h('div', { className: 'dshm-cardActs' },
+                h('span', { className: 'dshm-btn done' }, t('alreadyInstalled')),
+                updAvail && h('button', {
+                  className: 'dshm-btn upd',
+                  disabled: updatingName !== null || busyUrl !== null,
+                  onClick: () => doUpdate(inKey),
+                }, t('update')),
+                !marketSelf && (removingName === inKey
+                  ? h('button', { className: 'dshm-btn danger busy', disabled: true }, t('uninstalling'))
+                  : removeArmed === inKey
+                    ? h('button', {
+                        className: 'dshm-btn danger armed',
+                        onClick: () => doUninstall(inKey),
+                        onMouseLeave: () => setRemoveArmed(null),
+                      }, t('confirmRemove'))
+                    : h('button', {
+                        className: 'dshm-btn danger',
+                        disabled: busyUrl !== null || updatingName !== null || removingName !== null,
+                        onClick: () => setRemoveArmed(inKey),
+                      }, t('uninstall'))))
             : busy
               ? h('button', { className: 'dshm-btn primary busy', disabled: true }, t('installing'))
               : h('button', {
@@ -1221,7 +1261,8 @@ function MarketSection(props) {
                 : h('span', { className: 'dshm-spec' }, specText),
               entry !== undefined && h('div', { className: 'dshm-irowDesc' }, descOf(entry, lang)),
               selectedName === name && h('div', { className: 'dshm-irowTime' },
-                t('installedAt') + ': ' + (fmtTime(timeInfo?.installed) || '—') + ' · ' + t('updatedAt') + ': ' + (fmtTime(timeInfo?.updated) || '—')),
+                h('div', { className: 'dshm-irowTimeRow' }, t('installedAt') + ': ' + (fmtTime(timeInfo?.installed) || '—')),
+                h('div', { className: 'dshm-irowTimeRow' }, t('updatedAt') + ': ' + (fmtTime(timeInfo?.updated) || '—'))),
               updatingName === name && h('div', { className: 'dshm-progress' },
                 h('span', { className: 'dshm-spin' }),
                 h('code', { className: 'dshm-grow' }, progressLine || t('progressHint')))),
@@ -1267,6 +1308,49 @@ function MarketSection(props) {
   const auditFindings = auditBlock !== null && auditBlock.audit && Array.isArray(auditBlock.audit.findings)
     ? auditBlock.audit.findings.filter(f => f.severity === 'review').slice(0, 6)
     : []
+
+  const showTopEl = showTop
+    ? h('button', {
+        className: 'dshm-top',
+        title: t('backTop'),
+        onClick: () => { const el = bodyRef.current; if (el) el.scrollTo({ top: 0, behavior: 'smooth' }) },
+      }, '↑')
+    : null
+
+  const confirmModalEl = confirming !== null
+    ? h('div', { className: 'dshm-mask', onClick: e => { if (e.target === e.currentTarget) setConfirming(null) } },
+        h('div', { className: 'dshm-modal' },
+          h('h3', null, t('confirmTitle') + ' ' + confirming.name + '?'),
+          h('p', null, descOf(confirming, lang)),
+          h('div', { className: 'dshm-cmd' }, confirming.install),
+          confirming.curated === false && h('p', { style: { color: 'var(--dsw-alias-state-warn-primary, #b45309)', fontWeight: 600 } },
+            '🔎 ' + t('communityWarn')),
+          looksTerminal(confirming, lang) && h('p', { style: { color: 'var(--dsw-alias-state-warn-primary, #b45309)', fontWeight: 600 } },
+            '🖥️ ' + t('terminalWarn') + ' ',
+            h('a', { className: 'dshm-src', href: confirming.url + '#readme', target: '_blank', rel: 'noreferrer' }, t('readme'))),
+          h('p', null, '🛡️ ' + t('auditPassNote')),
+          h('p', null, '⚠️ ' + t('confirmWarn')),
+          h('div', { className: 'dshm-acts' },
+            h('button', { className: 'dshm-btn ghost', onClick: () => setConfirming(null) }, t('cancel')),
+            h('button', { className: 'dshm-btn primary', onClick: () => doInstall(confirming) }, t('install')))))
+    : null
+
+  const readmeModalEl = readmeView !== null
+    ? h('div', { className: 'dshm-mask', onClick: e => { if (e.target === e.currentTarget) setReadmeView(null) } },
+        h('div', { className: 'dshm-modal dshm-readmeModal' },
+          h('div', { className: 'dshm-readmeHead' },
+            h('h3', null, t('readme') + ' · ' + readmeView.name + (readmeView.source ? ' — ' + readmeView.source : '')),
+            h('span', { className: 'dshm-grow' }),
+            h('button', { className: 'dshm-btn ghost', onClick: () => setReadmeView(null) }, '✕')),
+          h('div', { className: 'dshm-readme' },
+            readmeView.loading
+              ? h('div', { className: 'dshm-loading' }, h('span', { className: 'dshm-spin' }))
+              : readmeView.error
+                ? h('div', { className: 'dshm-empty' }, t('readmeFail'))
+                : readmeView.content
+                  ? renderMarkdown(readmeView.content)
+                  : h('div', { className: 'dshm-empty' }, t('readmeEmpty') + (readmeView.description ? ' — ' + readmeView.description : '')))))
+    : null
 
   return h('div', { className: 'dshm-root' },
     h('div', { className: 'dshm-head' },
@@ -1370,40 +1454,9 @@ function MarketSection(props) {
     },
       h('div', { className: 'dshm-bodyInner' },
         tab === 'discover' ? discoverBody : installedBody)),
-    showTop && h('button', {
-      className: 'dshm-top',
-      title: t('backTop'),
-      onClick: () => { const el = bodyRef.current; if (el) el.scrollTo({ top: 0, behavior: 'smooth' }) },
-    }, '↑'),
-    confirming !== null && h('div', { className: 'dshm-mask', onClick: e => { if (e.target === e.currentTarget) setConfirming(null) } },
-      h('div', { className: 'dshm-modal' },
-        h('h3', null, t('confirmTitle') + ' ' + confirming.name + '?'),
-        h('p', null, descOf(confirming, lang)),
-        h('div', { className: 'dshm-cmd' }, confirming.install),
-        confirming.curated === false && h('p', { style: { color: 'var(--dsw-alias-state-warn-primary, #b45309)', fontWeight: 600 } },
-          '🔎 ' + t('communityWarn')),
-        looksTerminal(confirming, lang) && h('p', { style: { color: 'var(--dsw-alias-state-warn-primary, #b45309)', fontWeight: 600 } },
-          '🖥️ ' + t('terminalWarn') + ' ',
-          h('a', { className: 'dshm-src', href: confirming.url + '#readme', target: '_blank', rel: 'noreferrer' }, t('readme'))),
-        h('p', null, '🛡️ ' + t('auditPassNote')),
-        h('p', null, '⚠️ ' + t('confirmWarn')),
-        h('div', { className: 'dshm-acts' },
-          h('button', { className: 'dshm-btn ghost', onClick: () => setConfirming(null) }, t('cancel')),
-          h('button', { className: 'dshm-btn primary', onClick: () => doInstall(confirming) }, t('install')))),
-    readmeView !== null && h('div', { className: 'dshm-mask', onClick: e => { if (e.target === e.currentTarget) setReadmeView(null) } },
-      h('div', { className: 'dshm-modal dshm-readmeModal' },
-        h('div', { className: 'dshm-readmeHead' },
-          h('h3', null, t('readme') + ' · ' + readmeView.name + (readmeView.source ? ' — ' + readmeView.source : '')),
-          h('span', { className: 'dshm-grow' }),
-          h('button', { className: 'dshm-btn ghost', onClick: () => setReadmeView(null) }, '✕')),
-        h('div', { className: 'dshm-readme' },
-          readmeView.loading
-            ? h('div', { className: 'dshm-loading' }, h('span', { className: 'dshm-spin' }))
-            : readmeView.error
-              ? h('div', { className: 'dshm-empty' }, t('readmeFail'))
-              : readmeView.content
-                ? renderMarkdown(readmeView.content)
-                : h('div', { className: 'dshm-empty' }, t('readmeEmpty') + (readmeView.description ? ' — ' + readmeView.description : '')))))))
+    showTopEl,
+    confirmModalEl,
+    readmeModalEl)
 }
 
 exports.name = 'dsh-market'
