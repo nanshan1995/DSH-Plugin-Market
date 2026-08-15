@@ -48,6 +48,10 @@ const zh = {
   updateFail: '更新失败',
   upToDate: '已是最新',
   linkedDev: '本地开发链接',
+  disable: '停用',
+  enable: '启用',
+  disabledTag: '已停用',
+  marketLock: '市场插件自身不可停用',
   exportLog: '导出日志',
   readme: '使用说明',
   terminalWarn: '这看起来是终端/命令行插件：装进网页版可能无效，甚至导致 DeepSeek Harness 无法启动。建议先看它的使用说明，按说明装进对应的 profile。',
@@ -150,6 +154,10 @@ const en = {
   updateFail: 'Update failed',
   upToDate: 'Up to date',
   linkedDev: 'linked (dev)',
+  disable: 'Disable',
+  enable: 'Enable',
+  disabledTag: 'Disabled',
+  marketLock: 'The market plugin cannot disable itself',
   exportLog: 'Export log',
   readme: 'README',
   terminalWarn: 'This looks like a terminal/CLI plugin: installing it into the web profile may do nothing, or even break DeepSeek Harness startup. Read its README and install it into the profile it targets.',
@@ -286,6 +294,8 @@ const CSS = `
 .dshm-richFoot{display:flex;align-items:center;gap:8px}
 .dshm-irow{border:1px solid var(--dsw-alias-border-l2,#e5e7eb);background:var(--dsw-alias-bg-layer-3,#fff);border-radius:10px;padding:10px 14px;display:flex;align-items:center;gap:10px;min-width:0;cursor:pointer;transition:border-color .15s ease,box-shadow .15s ease}
 .dshm-irow.dshm-irowSelected{border-color:var(--dsw-alias-state-success-primary,#16a34a);box-shadow:0 0 0 2px color-mix(in srgb,var(--dsw-alias-state-success-primary,#16a34a) 22%,transparent)}
+.dshm-irow.dshm-irowOff{opacity:.55}
+.dshm-irow.dshm-irowOff:hover{opacity:.85}
 .dshm-irowTime{font-size:11px;line-height:18px;color:var(--dsw-alias-state-success-primary,#16a34a);margin-top:2px;font-variant-numeric:tabular-nums}
 .dshm-irowMain{min-width:0;flex:1}
 .dshm-irowTitle{font-size:14px;font-weight:600;line-height:20px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -532,6 +542,8 @@ function MarketSection(props) {
   const [installedTimeDesc, setInstalledTimeDesc] = useState(true)
   const [installedTimes, setInstalledTimes] = useState({})
   const [selectedName, setSelectedName] = useState(null)
+  const [entries, setEntries] = useState([])
+  const [togglingId, setTogglingId] = useState(null)
   const [gateOn, setGateOn] = useState(true)
   const bodyRef = React.useRef(null)
   // Pagination bookkeeping kept in refs so "load more" always appends exactly
@@ -559,6 +571,35 @@ function MarketSection(props) {
       .catch(() => {})
   }, [])
 
+  const refreshEntries = useCallback(() => {
+    fetch('/dsh-market/entries', { cache: 'no-store' })
+      .then(res => res.json())
+      .then(body => setEntries(Array.isArray(body.entries) ? body.entries : []))
+      .catch(() => {})
+  }, [])
+
+  /** Hot enable/disable of a loader row (the market's own row is protected). */
+  const doToggle = useCallback((rowId, enable) => {
+    setTogglingId(rowId)
+    setInstallError(null)
+    fetch('/dsh-market/toggle', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ id: rowId, enable }),
+    })
+      .then(res => res.json().then(body => ({ status: res.status, body })))
+      .then(({ status, body }) => {
+        if (status === 200 && body.ok) {
+          setEntries(Array.isArray(body.entries) ? body.entries : [])
+        } else {
+          const text = v => typeof v === 'string' ? v : (v && typeof v.text === 'string') ? v.text : v == null ? '' : JSON.stringify(v)
+          setInstallError((text(body.error) || 'error').trim().slice(-300))
+        }
+      })
+      .catch(error => setInstallError(String(error)))
+      .finally(() => setTogglingId(null))
+  }, [])
+
   useEffect(() => {
     injectStyles()
     fetch('/dsh-market/registry', { cache: 'no-store' })
@@ -574,7 +615,8 @@ function MarketSection(props) {
       })
       .catch(() => {})
     refreshInstalled()
-  }, [refreshInstalled])
+    refreshEntries()
+  }, [refreshInstalled, refreshEntries])
 
   // Pending-restart flags survive tab switches and page reloads, scoped to
   // one host process: a different boot id means the restart happened and the
@@ -1019,9 +1061,12 @@ function MarketSection(props) {
           const timeTitle = (timeInfo?.installed || timeInfo?.updated)
             ? t('installedAt') + ': ' + (fmtTime(timeInfo.installed) || '—') + '\n' + t('updatedAt') + ': ' + (fmtTime(timeInfo.updated) || '—')
             : ''
+          const loaderRow = entries.find(r => r.name === name)
+          const isMarket = name === 'dsh-market' || name === 'dshmarket'
+          const rowDisabled = loaderRow !== undefined && loaderRow.disabled === true
           return h('div', {
             key: name,
-            className: 'dshm-irow' + (selectedName === name ? ' dshm-irowSelected' : ''),
+            className: 'dshm-irow' + (selectedName === name ? ' dshm-irowSelected' : '') + (rowDisabled ? ' dshm-irowOff' : ''),
             title: timeTitle,
             onClick: e => {
               if (e.target.closest('button, a')) return
@@ -1030,7 +1075,8 @@ function MarketSection(props) {
           },
             h('div', { className: 'dshm-irowMain', title: timeTitle },
               h('div', { className: 'dshm-irowTitle', title: name }, name,
-                version !== '' && h('span', { className: 'dshm-irowVersion' }, ' ' + version)),
+                version !== '' && h('span', { className: 'dshm-irowVersion' }, ' ' + version),
+                rowDisabled && h('span', { className: 'dshm-configTag', style: { marginLeft: '6px' } }, t('disabledTag'))),
               repoUrl !== null
                 ? h('a', { className: 'dshm-spec dshm-src', href: repoUrl, target: '_blank', rel: 'noreferrer' }, specText)
                 : h('span', { className: 'dshm-spec' }, specText),
@@ -1048,6 +1094,13 @@ function MarketSection(props) {
                 : updAvailable
                   ? null
                   : h('span', { className: 'dshm-irowStatus' }, status && status.kind === 'linked' ? t('linkedDev') : t('upToDate')),
+            isMarket
+              ? h('span', { className: 'dshm-irowStatus', title: t('marketLock') }, '🔒')
+              : loaderRow !== undefined && h('button', {
+                  className: 'dshm-btn ghost' + (togglingId === loaderRow.id ? ' busy' : ''),
+                  disabled: togglingId !== null || busyUrl !== null,
+                  onClick: () => doToggle(loaderRow.id, rowDisabled),
+                }, rowDisabled ? t('enable') : t('disable')),
             repoUrl !== null && h('a', { className: 'dshm-btn ghost', href: repoUrl + '#readme', target: '_blank', rel: 'noreferrer' }, t('readme')),
             updAvailable && h('button', {
               className: 'dshm-btn upd',
