@@ -48,6 +48,7 @@ const zh = {
   updateFail: '更新失败',
   upToDate: '已是最新',
   linkedDev: '本地开发链接',
+  patchLoaded: 'patch 行加载',
   disable: '停用',
   enable: '启用',
   disabledTag: '已停用',
@@ -156,6 +157,7 @@ const en = {
   updateFail: 'Update failed',
   upToDate: 'Up to date',
   linkedDev: 'linked (dev)',
+  patchLoaded: 'patch row',
   disable: 'Disable',
   enable: 'Enable',
   disabledTag: 'Disabled',
@@ -1067,6 +1069,7 @@ function MarketSection(props) {
             : ''
           const loaderRow = entries.find(r => r.name === name)
           const isMarket = name === 'dsh-market' || name === 'dshmarket'
+          const isPatchRow = specText.startsWith('patch:')
           const rowDisabled = loaderRow !== undefined && loaderRow.disabled === true
           return h('div', {
             key: name,
@@ -1097,7 +1100,7 @@ function MarketSection(props) {
                 ? h('span', { className: 'dshm-irowStatus' }, t('updating'))
                 : updAvailable
                   ? null
-                  : h('span', { className: 'dshm-irowStatus' }, status && status.kind === 'linked' ? t('linkedDev') : t('upToDate')),
+                  : h('span', { className: 'dshm-irowStatus' }, status && status.kind === 'linked' ? t('linkedDev') : isPatchRow ? t('patchLoaded') : t('upToDate')),
             isMarket
               ? h('span', { className: 'dshm-irowStatus', title: t('marketLock') }, '🔒')
               : loaderRow !== undefined && h('button', {
