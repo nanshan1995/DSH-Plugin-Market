@@ -1271,7 +1271,9 @@ function MarketSection(props) {
           }
           if (Array.isArray(body.bundleless) && body.bundleless.length > 0) setBundleless(body.bundleless)
           refreshInstalled()
-        } else if (body.audit !== undefined && body.audit !== null) {
+        // allowForce 为 true 时显示审计阻止卡（含「仍然安装」按钮）——
+        // 即使审计报告为 null（审计不可用/超时）也要让用户能强制安装。
+        } else if (body.allowForce === true || (body.audit !== undefined && body.audit !== null)) {
           setAuditBlock({ name: plugin.name, audit: body.audit, hooks: Array.isArray(body.hooks) ? body.hooks : [], plugin })
         } else {
           const text = v => typeof v === 'string' ? v : (v && typeof v.text === 'string') ? v.text : v == null ? '' : JSON.stringify(v)
@@ -1300,7 +1302,7 @@ function MarketSection(props) {
         if (status === 200 && body.ok) {
           setUpdatedNames(names => names.concat(name))
           refreshInstalled()
-        } else if (body.audit !== undefined && body.audit !== null) {
+        } else if (body.allowForce === true || (body.audit !== undefined && body.audit !== null)) {
           setAuditBlock({ name, audit: body.audit, hooks: Array.isArray(body.hooks) ? body.hooks : [], update: true })
         } else {
           const text = v => typeof v === 'string' ? v : (v && typeof v.text === 'string') ? v.text : v == null ? '' : JSON.stringify(v)
@@ -1403,10 +1405,11 @@ function MarketSection(props) {
   }
 
   /** 发现页排序权重（打开页面即生效，无视热门/最新排序）：
-   *  0 = 正在安装/更新/卸载（最前）→ 1 = 已安装/可更新 → 2 = 未安装；
-   *  同权重内保持原来的热门/最新顺序。 */
+   *  0 = 正在安装/更新/卸载 + 审计被阻止待决定（最前）
+   *  → 1 = 已安装/可更新 → 2 = 未安装；同权重内保持原顺序。 */
   const activeRank = (p) => {
     if (busyUrl === p.url) return 0
+    if (auditBlock !== null && auditBlock.plugin && auditBlock.plugin.url === p.url) return 0
     const inKey = installedKeyOf(p, installed)
     if (inKey === null) return 2
     if (updatingName === inKey || removingName === inKey) return 0
@@ -1728,7 +1731,9 @@ function MarketSection(props) {
                   : doInstall(auditBlock.plugin, true),
               }, t('forceInstallConfirm')),
               h('button', { className: 'dshm-btn ghost', onClick: () => setAuditBlock({ ...auditBlock, confirming: false }) }, t('cancel')))
-          : h('button', { className: 'dshm-btn danger', onClick: () => setAuditBlock({ ...auditBlock, confirming: true }) }, auditBlock.update ? t('forceUpdate') : t('forceInstall')))),
+          : h(React.Fragment, null,
+              h('button', { className: 'dshm-btn danger', onClick: () => setAuditBlock({ ...auditBlock, confirming: true }) }, auditBlock.update ? t('forceUpdate') : t('forceInstall')),
+              h('button', { className: 'dshm-btn ghost', onClick: () => setAuditBlock(null) }, t('cancel'))))),
     installError !== null && h('div', { className: 'dshm-err' }, installError),
     h('div', {
       className: 'dshm-body',
