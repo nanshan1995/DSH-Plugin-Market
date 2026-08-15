@@ -829,7 +829,6 @@ function MarketSection(props) {
   const [hotUrls, setHotUrls] = useState([])
   const [hotNames, setHotNames] = useState([])
   const [progressLine, setProgressLine] = useState(null)
-  const [progressSeconds, setProgressSeconds] = useState(null)
   const [removingName, setRemovingName] = useState(null)
   const [removedCount, setRemovedCount] = useState(0)
   const [envReady, setEnvReady] = useState(true)
@@ -1194,7 +1193,6 @@ function MarketSection(props) {
   useEffect(() => {
     if (busyUrl === null && updatingName === null && removingName === null) {
       setProgressLine(null)
-      setProgressSeconds(null)
       return
     }
     const timer = setInterval(() => {
@@ -1203,14 +1201,11 @@ function MarketSection(props) {
         .then(status => {
           if (status.active) {
             setProgressLine((status.lastLine || '…') + '  (' + status.seconds + 's)')
-            setProgressSeconds(status.seconds)
           } else if (status.auditing === true) {
             setProgressLine(t('auditingPhase'))
-            setProgressSeconds(null)
-          } else {
+                } else {
             setProgressLine(null)
-            setProgressSeconds(null)
-            setInstalled(status.installed || {})
+                  setInstalled(status.installed || {})
             const pending = readSession('dshm-pending')
             if (pending !== null && busyUrl !== null) {
               // 安装完成判定：busyUrl 的 owner/repo 出现在 installed 的 spec 里。
@@ -1365,7 +1360,7 @@ function MarketSection(props) {
                 }, t('update')),
                 !marketSelf && (removingName === inKey
                   ? h('button', { className: 'dshm-btn danger busy', disabled: true },
-                      t('uninstalling') + (progressSeconds !== null ? ' (' + progressSeconds + 's)' : ''))
+                      t('uninstalling'))
                   : h('button', {
                       className: 'dshm-btn danger',
                       disabled: busyUrl !== null || updatingName !== null || removingName !== null,
@@ -1373,7 +1368,7 @@ function MarketSection(props) {
                     }, t('uninstall'))))
             : busy
               ? h('button', { className: 'dshm-btn primary busy', disabled: true },
-                  t('installing') + (progressSeconds !== null ? ' (' + progressSeconds + 's)' : ''))
+                  t('installing'))
               : h('button', {
                   className: 'dshm-btn primary',
                   disabled: busyUrl !== null || !envReady || !gateOn,
@@ -1512,7 +1507,7 @@ function MarketSection(props) {
             updatedNames.includes(name)
               ? h('span', { className: 'dshm-irowStatus', style: { color: 'var(--dsw-alias-state-success-primary,#16a34a)' } }, t('updated'))
               : updatingName === name
-                ? h('span', { className: 'dshm-irowStatus' }, t('updating') + (progressSeconds !== null ? ' (' + progressSeconds + 's)' : ''))
+                ? h('span', { className: 'dshm-irowStatus' }, t('updating'))
                 : updAvailable
                   ? null
                   : h('span', { className: 'dshm-irowStatus' }, status && status.kind === 'linked' ? t('linkedDev') : isPatchRow ? t('patchLoaded') : t('upToDate')),
@@ -1534,7 +1529,7 @@ function MarketSection(props) {
             name !== 'dsh-plugin-market' && name !== 'dsh-plugin-market' && (
               removingName === name
                 ? h('button', { className: 'dshm-btn danger busy', disabled: true },
-                    t('uninstalling') + (progressSeconds !== null ? ' (' + progressSeconds + 's)' : ''))
+                    t('uninstalling'))
                 : h('button', {
                     className: 'dshm-btn danger',
                     disabled: removingName !== null || busyUrl !== null || updatingName !== null,
