@@ -20,6 +20,7 @@ const NS = 'dsh-market'
 const zh = {
   nav: '插件市场',
   subtitle: '发现社区为 DeepSeek Harness 打造的能力',
+  disclaimer: '本市场仅提供插件的浏览、下载与管理。下载前只做最基础的静态检查，不构成安全或合规承诺；下载后使用插件产生的一切问题与损失，与作者无关。',
   searchPh: '搜索插件：名称或描述，中英近义互通（如「提醒」可命中 notification）',
   tabDiscover: '发现',
   tabInstalled: '已安装',
@@ -51,6 +52,8 @@ const zh = {
   patchLoaded: 'patch 行加载',
   readmeEmpty: '该插件未提供 README 使用说明',
   readmeFail: '使用说明加载失败',
+  readmeRepaired: '已修复乱码',
+  readmeRepairedHint: '该 README 原文件编码已损坏（双重 GB18030 乱码），已自动还原为可读文本；个别已被损坏的位置显示为「?」。',
   disable: '停用',
   enable: '启用',
   disabledTag: '已停用',
@@ -132,6 +135,7 @@ const zh = {
 const en = {
   nav: 'Plugin Market',
   subtitle: 'Discover community plugins for DeepSeek Harness',
+  disclaimer: 'This market only provides plugin browsing, download and management. Only a minimal static check runs before download — no safety or compliance promise is made. The author is not responsible for any issues or losses arising from the use of installed plugins.',
   searchPh: 'Search plugins — name or description, zh/en synonyms both match',
   tabDiscover: 'Discover',
   tabInstalled: 'Installed',
@@ -163,6 +167,8 @@ const en = {
   patchLoaded: 'patch row',
   readmeEmpty: 'No README provided for this plugin',
   readmeFail: 'Failed to load the README',
+  readmeRepaired: 'encoding repaired',
+  readmeRepairedHint: 'This README shipped with corrupted encoding (double GB18030 mojibake) and was restored to readable text; spots already destroyed upstream show as "?".',
   disable: 'Disable',
   enable: 'Enable',
   disabledTag: 'Disabled',
@@ -299,6 +305,8 @@ const CSS = `
 .dshm-richCard{border:1px solid var(--dsw-alias-border-l2,#e5e7eb);background:var(--dsw-alias-bg-layer-3,#fff);border-radius:10px;min-width:0;padding:12px 14px;display:flex;flex-direction:column;gap:8px}
 .dshm-richTop{display:flex;align-items:center;gap:10px;min-width:0}
 .dshm-cardActs{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.dshm-disclaimer{font-size:11px;line-height:16px;color:var(--dsw-alias-label-tertiary,#9ca3af);margin:2px 0 6px;padding:6px 10px;border:1px dashed var(--dsw-alias-border-l2,#e5e7eb);border-radius:8px;background:var(--dsw-alias-bg-module-platform,#f7f8fa)}
+.dshm-disclaimerText{font-size:12px;color:var(--dsw-alias-label-tertiary,#9ca3af);margin-top:6px}
 .dshm-av{width:32px;height:32px;border-radius:8px;display:grid;place-items:center;font-weight:600;color:#fff;font-size:14px;flex-shrink:0}
 .dshm-richHead{min-width:0;flex:1}
 .dshm-richTitle{font-size:14px;font-weight:600;line-height:20px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -310,7 +318,7 @@ const CSS = `
 .dshm-irow.dshm-irowOff{opacity:.55}
 .dshm-irow.dshm-irowOff:hover{opacity:.85}
 .dshm-irowTime{font-size:11px;line-height:18px;color:var(--dsw-alias-state-success-primary,#16a34a);margin-top:2px;font-variant-numeric:tabular-nums}
-.dshm-irowTimeRow{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dshm-irowTimeRow{overflow-wrap:break-word}
 .dshm-readmeModal{width:min(760px,94vw);display:flex;flex-direction:column;max-height:80vh}
 .dshm-readmeHead{display:flex;align-items:center;gap:8px;margin-bottom:10px;flex-shrink:0}
 .dshm-readmeHead h3{margin:0}
@@ -645,6 +653,7 @@ function MarketSection(props) {
   const [data, setData] = useState(null)
   const [loadError, setLoadError] = useState(false)
   const [installed, setInstalled] = useState({})
+  const [installedRepos, setInstalledRepos] = useState({})
   const [tab, setTab] = useState(() => {
     const saved = sessionStorage.getItem('dshm-tab')
     if (saved !== null) sessionStorage.removeItem('dshm-tab')
@@ -706,6 +715,7 @@ function MarketSection(props) {
       .then(body => {
         setInstalled(body.installed || {})
         setInstalledTimes(body.times || {})
+        setInstalledRepos(body.repos || {})
       })
       .catch(() => {})
     fetch('/dsh-market/updates' + (force === true ? '?force=1' : ''), { cache: 'no-store' })
@@ -921,7 +931,7 @@ function MarketSection(props) {
     fetch('/dsh-market/readme?name=' + encodeURIComponent(name) + '&lang=' + lang, { cache: 'no-store' })
       .then(res => res.json())
       .then(body => {
-        if (body.ok) setReadmeView({ name, content: body.content, source: body.source })
+        if (body.ok) setReadmeView({ name, content: body.content, source: body.source, repaired: body.repaired === true })
         else setReadmeView({ name, description: body.description || '' })
       })
       .catch(() => setReadmeView({ name, error: true }))
@@ -1234,6 +1244,8 @@ function MarketSection(props) {
           const specText = String(spec)
           const ghSpec = /^github:([A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+?)(?:#|$)/.exec(specText)
           const repoUrl = entry !== undefined ? entry.url : ghSpec !== null ? 'https://github.com/' + ghSpec[1] : null
+          const repoInfo = installedRepos[name]
+          const gitUrl = repoUrl !== null ? repoUrl : typeof repoInfo === 'string' && repoInfo !== '' ? repoInfo : null
           const updAvailable = !!(status && status.updateAvailable)
           const timeInfo = installedTimes[name]
           const timeTitle = (timeInfo?.installed || timeInfo?.updated)
@@ -1256,8 +1268,8 @@ function MarketSection(props) {
               h('div', { className: 'dshm-irowTitle', title: name }, name,
                 version !== '' && h('span', { className: 'dshm-irowVersion' }, ' ' + version),
                 rowDisabled && h('span', { className: 'dshm-configTag', style: { marginLeft: '6px' } }, t('disabledTag'))),
-              repoUrl !== null
-                ? h('a', { className: 'dshm-spec dshm-src', href: repoUrl, target: '_blank', rel: 'noreferrer' }, specText)
+              gitUrl !== null
+                ? h('a', { className: 'dshm-spec dshm-src', href: gitUrl, target: '_blank', rel: 'noreferrer' }, specText)
                 : h('span', { className: 'dshm-spec' }, specText),
               entry !== undefined && h('div', { className: 'dshm-irowDesc' }, descOf(entry, lang)),
               selectedName === name && h('div', { className: 'dshm-irowTime' },
@@ -1282,6 +1294,7 @@ function MarketSection(props) {
                   onClick: () => doToggle(loaderRow.id, rowDisabled),
                 }, rowDisabled ? t('enable') : t('disable')),
             !isMarket && loaderRow === undefined && h('span', { className: 'dshm-configTag', title: t('notPluginHint') }, t('notPlugin')),
+            gitUrl !== null && h('a', { className: 'dshm-btn ghost', href: gitUrl, target: '_blank', rel: 'noreferrer', title: gitUrl }, t('viewSource')),
             h('button', { className: 'dshm-btn ghost', onClick: () => openReadme(name) }, t('readme')),
             updAvailable && h('button', {
               className: 'dshm-btn upd',
@@ -1330,6 +1343,7 @@ function MarketSection(props) {
             h('a', { className: 'dshm-src', href: confirming.url + '#readme', target: '_blank', rel: 'noreferrer' }, t('readme'))),
           h('p', null, '🛡️ ' + t('auditPassNote')),
           h('p', null, '⚠️ ' + t('confirmWarn')),
+          h('p', { className: 'dshm-disclaimerText' }, t('disclaimer')),
           h('div', { className: 'dshm-acts' },
             h('button', { className: 'dshm-btn ghost', onClick: () => setConfirming(null) }, t('cancel')),
             h('button', { className: 'dshm-btn primary', onClick: () => doInstall(confirming) }, t('install')))))
@@ -1341,6 +1355,7 @@ function MarketSection(props) {
           h('div', { className: 'dshm-readmeHead' },
             h('h3', null, t('readme') + ' · ' + readmeView.name + (readmeView.source ? ' — ' + readmeView.source : '')),
             h('span', { className: 'dshm-grow' }),
+            readmeView.repaired && h('span', { className: 'dshm-configTag', style: { color: 'var(--dsw-alias-state-warn-primary,#b45309)' }, title: t('readmeRepairedHint') }, t('readmeRepaired')),
             h('button', { className: 'dshm-btn ghost', onClick: () => setReadmeView(null) }, '✕')),
           h('div', { className: 'dshm-readme' },
             readmeView.loading
@@ -1386,6 +1401,7 @@ function MarketSection(props) {
         h('button', { className: 'dshm-tab' + (tab === 'installed' ? ' on' : ''), onClick: () => { setTab('installed'); refreshInstalled(true) } },
           t('tabInstalled') + (Object.keys(installed).length > 0 ? ' (' + Object.keys(installed).length + ')' : ''),
           hasUpdates && h('span', { className: 'dshm-dot' })))),
+      h('div', { className: 'dshm-disclaimer', title: t('disclaimer') }, 'ℹ️ ', t('disclaimer')),
     !envReady && h('div', { className: 'dshm-banner' },
       h('span', null, '🧩'),
       h('span', { className: 'dshm-grow' },

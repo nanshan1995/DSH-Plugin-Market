@@ -15,6 +15,8 @@ Plugin market inside DeepSeek Harness: browse, search, one-click install — eve
 - Pre-install audit of the exact published artifact (dynamic exec, credential access, install scripts are hard-blocked); blocked installs show an audit report card
 - Official design language (`--dsw-alias-*` tokens); audit results in the official "request approval" pill style
 - Update checks, one-click updates (audited too), two-step uninstall, hot mounting, log export, self-service pnpm setup
+- **Git links for every installed plugin**: each Installed row resolves its repository from `package.json` (`repository` / GitHub `homepage`), the `github:` spec, or a scan of the shipped README — the spec text and a "Source" button open the repo
+- **In-market README viewer with encoding repair**: read a plugin's usage instructions right in the market; READMEs that shipped double-encoded (UTF-8 text mis-decoded as GB18030, e.g. `——` → `鈥斺€`) are detected and restored to readable text (a "encoding repaired" badge shows; spots already destroyed upstream render as `?`)
 
 ## Installation
 
@@ -47,6 +49,8 @@ Restart DeepSeek Harness, then open Settings → Plugin Market.
 - **Search**: live keyword search with zh/en thesaurus **plus LLM translation**; the UI shows "Translated as: …"
 - **Install**: click Install → the real source is downloaded and statically audited → auto-installs on pass; on block, an audit card is shown (hand it to the Agent for manual review)
 - **Installed**: sort by install time (toggle direction), hover/select to see install & update times; **hot enable/disable (no restart)**, update and uninstall entry points; disabled plugins dim with a "Disabled" tag and stay disabled across restarts; the market itself cannot be disabled
+- **Installed rows link to their git**: the spec text becomes a link and a "Source" button opens the repo — resolved from `package.json` `repository` (or GitHub `homepage`), the `github:` spec, or a README scan when the package declares no repository (e.g. dsh-plugin-audit)
+- **README (usage instructions)**: the "README" button opens the plugin's usage instructions in-market; garbled double-encoded READMEs are repaired automatically, with a badge when repair happened
 - **Plugins without a `dsh.bundle` declaration**: a yellow notice appears after install with a **"Let the Agent handle it"** button — it opens a fresh session with a pre-filled diagnosis task so the Agent finishes the wiring for you
 
 ## Configuration
@@ -90,6 +94,10 @@ cordis.patch.yml      bundle patch: inserts the dsh-market row into the profile
 ## Security notes
 
 The static audit is a **capability radar, not a behavior firewall**: it blocks the highest-risk static patterns (dynamic exec, credential theft, install scripts, tampering with other plugins) but cannot judge runtime data-flow intent (e.g. "read documents, then upload"). Curation ≠ endorsement: only install sources you trust, and pair this with a runtime sentinel (e.g. dsh-plugin-audit) and commit pinning.
+
+## Disclaimer
+
+This market only provides plugin **browsing, download and management**. Before download it runs only the most basic static check — no safety or compliance promise is made. **The author is not responsible for any issues or losses arising from the download or use of any plugin.**
 
 ## Development workflow (branch policy)
 
