@@ -755,12 +755,18 @@ function MarketSection(props) {
       .finally(() => setTogglingId(null))
   }, [])
 
-  useEffect(() => {
-    injectStyles()
-    fetch('/dsh-market/registry', { cache: 'no-store' })
+  /** 拉取精选目录；默认强制实时（force=1 跳过服务端缓存，失败回退缓存/快照）。 */
+  const refreshRegistry = useCallback((force) => {
+    setLoadError(false)
+    fetch('/dsh-market/registry' + (force !== false ? '?force=1' : ''), { cache: 'no-store' })
       .then(res => { if (!res.ok) throw new Error('HTTP ' + res.status); return res.json() })
       .then(body => setData(body.registry))
       .catch(() => setLoadError(true))
+  }, [])
+
+  useEffect(() => {
+    injectStyles()
+    refreshRegistry()
     fetch('/dsh-market/status', { cache: 'no-store' })
       .then(res => res.json())
       .then(status => {
@@ -772,7 +778,7 @@ function MarketSection(props) {
       .catch(() => {})
     refreshInstalled()
     refreshEntries()
-  }, [refreshInstalled, refreshEntries])
+  }, [refreshInstalled, refreshEntries, refreshRegistry])
 
   // Pending-restart flags survive tab switches and page reloads, scoped to
   // one host process: a different boot id means the restart happened and the
@@ -1399,7 +1405,7 @@ function MarketSection(props) {
         h('button', { className: !browseAll ? 'on' : '', onClick: () => setBrowseAll(false) }, t('browseCurated')),
         h('button', { className: browseAll ? 'on' : '', onClick: () => setBrowseAll(true) }, t('browseAll'))),
       h('div', { className: 'dshm-tabs' },
-        h('button', { className: 'dshm-tab' + (tab === 'discover' ? ' on' : ''), onClick: () => setTab('discover') }, t('tabDiscover')),
+        h('button', { className: 'dshm-tab' + (tab === 'discover' ? ' on' : ''), onClick: () => { setTab('discover'); if (tab !== 'discover') refreshRegistry() } }, t('tabDiscover')),
         h('button', { className: 'dshm-tab' + (tab === 'installed' ? ' on' : ''), onClick: () => { setTab('installed'); refreshInstalled(true) } },
           t('tabInstalled') + (Object.keys(installed).length > 0 ? ' (' + Object.keys(installed).length + ')' : ''),
           hasUpdates && h('span', { className: 'dshm-dot' })))),
