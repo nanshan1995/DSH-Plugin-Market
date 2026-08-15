@@ -61,6 +61,7 @@ const zh = {
   readme: '使用说明',
   terminalWarn: '这看起来是终端/命令行插件：装进网页版可能无效，甚至导致 DeepSeek Harness 无法启动。建议先看它的使用说明，按说明装进对应的 profile。',
   envMissing: '还差一个小组件才能安装插件',
+  envNoNode: '未检测到 Node.js——请先安装 Node.js（22+），再回来安装插件',
   envFix: '自动装好',
   envFixing: '正在准备…',
   envFixFail: '自动准备没成功，请点"导出日志"把文件发给我们反馈',
@@ -172,6 +173,7 @@ const en = {
   readme: 'README',
   terminalWarn: 'This looks like a terminal/CLI plugin: installing it into the web profile may do nothing, or even break DeepSeek Harness startup. Read its README and install it into the profile it targets.',
   envMissing: 'One small component is needed before installing plugins',
+  envNoNode: 'No Node.js detected — install Node.js (22+) first, then come back to install plugins',
   envFix: 'Set up automatically',
   envFixing: 'Setting up…',
   envFixFail: 'Automatic setup failed — please use "Export log" and send us the file',
@@ -634,6 +636,7 @@ function MarketSection(props) {
   const [envReady, setEnvReady] = useState(true)
   const [envFixing, setEnvFixing] = useState(false)
   const [envFailed, setEnvFailed] = useState(false)
+  const [toolReport, setToolReport] = useState(null)
   const [bootId, setBootId] = useState(null)
   const [showTop, setShowTop] = useState(false)
   const [sort, setSort] = useState('hot')
@@ -719,6 +722,7 @@ function MarketSection(props) {
       .then(res => res.json())
       .then(status => {
         setEnvReady(status.pnpm !== false)
+        setToolReport(status.tools && typeof status.tools === 'object' ? status.tools : null)
         if (typeof status.boot === 'string') setBootId(status.boot)
         if (typeof status.auditGate === 'boolean') setGateOn(status.auditGate)
       })
@@ -1287,8 +1291,11 @@ function MarketSection(props) {
           hasUpdates && h('span', { className: 'dshm-dot' })))),
     !envReady && h('div', { className: 'dshm-banner' },
       h('span', null, '🧩'),
-      h('span', { className: 'dshm-grow' }, envFailed ? t('envFixFail') : t('envMissing')),
-      !envFailed && h('button', {
+      h('span', { className: 'dshm-grow' },
+        envFailed ? t('envFixFail')
+          : toolReport && toolReport.node === false ? t('envNoNode')
+            : t('envMissing')),
+      !envFailed && toolReport && toolReport.node !== false && h('button', {
         className: 'dshm-btn primary' + (envFixing ? ' busy' : ''),
         disabled: envFixing,
         onClick: fixEnv,
