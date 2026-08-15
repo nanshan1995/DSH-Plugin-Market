@@ -21,7 +21,8 @@ const zh = {
   nav: '插件市场',
   subtitle: '发现社区为 DeepSeek Harness 打造的能力',
   disclaimer: '本市场仅提供插件的浏览、下载与管理。下载前只做最基础的静态检查，不构成安全或合规承诺；下载后使用插件产生的一切问题与损失，与作者无关。',
-  searchPh: '搜索插件：名称或描述，中英近义互通（如「提醒」可命中 notification）',
+  searchPh: '在精选目录里搜索：名称、作者或描述（中英互通）',
+  searchPhCommunity: '在社区（GitHub 实时）里搜索：名称或描述',
   tabDiscover: '发现',
   tabInstalled: '已安装',
   install: '安装',
@@ -137,7 +138,8 @@ const en = {
   nav: 'Plugin Market',
   subtitle: 'Discover community plugins for DeepSeek Harness',
   disclaimer: 'This market only provides plugin browsing, download and management. Only a minimal static check runs before download — no safety or compliance promise is made. The author is not responsible for any issues or losses arising from the use of installed plugins.',
-  searchPh: 'Search plugins — name or description, zh/en synonyms both match',
+  searchPh: 'Search the curated catalog — name, author or description (zh/en both match)',
+  searchPhCommunity: 'Search the live GitHub community — name or description',
   tabDiscover: 'Discover',
   tabInstalled: 'Installed',
   install: 'Install',
@@ -857,20 +859,22 @@ function MarketSection(props) {
     })
   }, [fetchPageRaw, applySearchMeta])
 
-  // Community search/browse behind the search box; the curated registry stays
-  // the default for an empty query unless "All community" is on.
+  // Search scope follows the active browse tab: 「精选目录」filters the
+  // curated registry locally (name/owner/desc/category, bilingual);
+  // 「社区全部」searches/browses live GitHub (empty query = browse the topic).
   useEffect(() => {
     const query = q.trim()
-    if (query === '' && !browseAll) {
-      setSearchResults([])
-      setSearchMeta(null)
-      searchMetaRef.current = null
-      searchQueryRef.current = ''
-      setSearchQuery('')
+    if (!browseAll) {
+      // Curated tab: local filter over the registry — no GitHub round-trip.
       setSearching(false)
       setSearchFailed(false)
+      searchMetaRef.current = null
+      setSearchMeta(null)
+      searchQueryRef.current = query
+      setSearchQuery(query)
       return
     }
+    // Community tab: empty query browses the whole topic (fetchSearchPage('',1)).
     setSearching(true)
     const timer = setTimeout(() => {
       fetchSearchPage(query, 1).finally(() => setSearching(false))
@@ -996,7 +1000,8 @@ function MarketSection(props) {
 
   const plugins = useMemo(() => {
     const query = q.trim()
-    if ((browseAll || query !== '') && searchQuery === query) return searchResults
+    // 「社区全部」tab: live GitHub results; 「精选目录」tab: local filter below.
+    if (browseAll && searchQuery === query) return searchResults
     if (data === null) return []
     const needle = query.toLowerCase()
     const terms = needle === '' ? [] : expandQuery(needle)
@@ -1171,9 +1176,27 @@ function MarketSection(props) {
 
   const query = q.trim()
   const browsing = browseAll && query === ''
-  const searchActive = browseAll || query !== ''
+  const searchActive = browseAll
 
   const discoverBody = (() => {
+    // 「精选目录」tab: render the curated list filtered by the query locally.
+    if (!browseAll) {
+      if (loadError) return h('div', { className: 'dshm-empty' }, t('loadFail'))
+      if (data === null) return h('div', { className: 'dshm-loading' }, h('span', { className: 'dshm-spin' }), t('loading'))
+      return h(React.Fragment, null,
+        h('div', { className: 'dshm-catalogHeading' },
+          h('h3', null, t('tabDiscover')),
+          h('span', null, plugins.length),
+          h('div', { className: 'dshm-headingSort' },
+            ['hot', 'new'].map(key => h('button', {
+              key,
+              className: sort === key ? 'on' : '',
+              onClick: () => setSort(key),
+            }, t(key === 'hot' ? 'sortHot' : 'sortNew'))))),
+        plugins.length === 0
+          ? h('div', { className: 'dshm-empty' }, t('empty'))
+          : h('div', { className: 'dshm-cards' }, plugins.map(p => renderRichCard(p, false))))
+    }
     if (searchActive) {
       if (searching || searchQuery !== query) {
         return h('div', { className: 'dshm-loading' }, h('span', { className: 'dshm-spin' }), t('searching'))
@@ -1396,7 +1419,7 @@ function MarketSection(props) {
         searchIcon(),
         h('input', {
           type: 'search',
-          placeholder: t('searchPh'),
+          placeholder: browseAll ? t('searchPhCommunity') : t('searchPh'),
           value: q,
           onChange: e => setQ(e.target.value),
           'aria-label': t('searchPh'),
