@@ -1398,6 +1398,13 @@ function MarketSection(props) {
         h('a', { className: 'dshm-src', href: p.url, target: '_blank', rel: 'noreferrer' }, t('viewSource'))))
   }
 
+  /** 进行中的操作（安装/更新/卸载）置顶：进度就在眼前。 */
+  const activeRank = (p) => {
+    const inKey = installedKeyOf(p, installed)
+    const act = busyUrl === p.url || (inKey !== null && (updatingName === inKey || removingName === inKey))
+    return act ? 0 : 1
+  }
+
   const query = q.trim()
   const browsing = query === ''
 
@@ -1429,7 +1436,7 @@ function MarketSection(props) {
       searchResults.length === 0
         ? h('div', { className: 'dshm-empty' },
             searchMeta && searchMeta.rateLimited ? t('rateLimitedEmpty') : t('empty'))
-        : h('div', { className: 'dshm-cards' }, searchResults.map(p => renderRichCard(p))),
+        : h('div', { className: 'dshm-cards' }, searchResults.slice().sort((a, b) => activeRank(a) - activeRank(b)).map(p => renderRichCard(p))),
       searchMeta && searchMeta.hasMore && h('div', { className: 'dshm-more' },
         h('button', { className: 'dshm-btn ghost', disabled: loadingMore, onClick: loadMore },
           loadingMore ? t('loadingMore') : t('more') + ' · ' + searchResults.length + ' / ' + searchMeta.total)),
@@ -1439,9 +1446,16 @@ function MarketSection(props) {
           .replace('{total}', String(searchMeta.total))))
   })()
 
+  /** 进行中的操作置顶，见上方 activeRank；这里对已安装列表同样处理。 */
   const installedEntries = Object.entries(installed)
-  installedEntries.sort((a, b) => (installedTimes[b[0]]?.installed ?? 0) - (installedTimes[a[0]]?.installed ?? 0))
-  if (!installedTimeDesc) installedEntries.reverse()
+  installedEntries.sort((a, b) => {
+    const actA = (a[0] === updatingName || a[0] === removingName) ? 1 : 0
+    const actB = (b[0] === updatingName || b[0] === removingName) ? 1 : 0
+    if (actA !== actB) return actB - actA
+    const ta = installedTimes[a[0]]?.installed ?? 0
+    const tb = installedTimes[b[0]]?.installed ?? 0
+    return installedTimeDesc ? tb - ta : ta - tb
+  })
 
   // 我的精选：收藏的社区插件，同样可安装/更新/卸载。
   const favoritesBody = favorites.length === 0
@@ -1450,7 +1464,7 @@ function MarketSection(props) {
         h('div', { className: 'dshm-catalogHeading' },
           h('h3', null, t('tabFavorites')),
           h('span', null, favorites.length)),
-        h('div', { className: 'dshm-cards' }, favorites.map(p => renderRichCard(p))))
+        h('div', { className: 'dshm-cards' }, favorites.slice().sort((a, b) => activeRank(a) - activeRank(b)).map(p => renderRichCard(p))))
 
   const installedBody = installedEntries.length === 0
     ? h('div', { className: 'dshm-empty' }, t('installedEmpty'))
