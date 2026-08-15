@@ -60,6 +60,8 @@ const zh = {
   patchLoaded: 'patch 行加载',
   readmeEmpty: '该插件未提供 README 使用说明',
   readmeFail: '使用说明加载失败',
+  readmeNoZh: '该插件暂无中文版，当前显示英文',
+  readmeNoEn: '该插件暂无英文版，当前显示中文',
   readmeRepaired: '已修复乱码',
   readmeRepairedHint: '该 README 原文件编码已损坏（双重 GB18030 乱码），已自动还原为可读文本；个别已被损坏的位置显示为「?」。',
   disable: '停用',
@@ -77,7 +79,7 @@ const zh = {
   envFixing: '正在准备…',
   envRetry: '重试',
   envFixFail: '自动准备没成功，请点"导出日志"把文件发给我们反馈',
-  loading: '正在加载插件目录…',
+  loading: '正在加载使用说明…',
   backTop: '回到顶部',
   sortHot: '最热',
   sortNew: '最新',
@@ -186,6 +188,8 @@ const en = {
   patchLoaded: 'patch row',
   readmeEmpty: 'No README provided for this plugin',
   readmeFail: 'Failed to load the README',
+  readmeNoZh: 'No Chinese README for this plugin — showing English',
+  readmeNoEn: 'No English README for this plugin — showing Chinese',
   readmeRepaired: 'encoding repaired',
   readmeRepairedHint: 'This README shipped with corrupted encoding (double GB18030 mojibake) and was restored to readable text; spots already destroyed upstream show as "?".',
   disable: 'Disable',
@@ -203,7 +207,7 @@ const en = {
   envFixing: 'Setting up…',
   envRetry: 'Retry',
   envFixFail: 'Automatic setup failed — please use "Export log" and send us the file',
-  loading: 'Loading the catalog…',
+  loading: 'Loading…',
   backTop: 'Back to top',
   sortHot: 'Top',
   sortNew: 'New',
@@ -347,6 +351,7 @@ const CSS = `
 .dshm-readmeHead{display:flex;align-items:center;gap:8px;margin-bottom:10px;flex-shrink:0}
 .dshm-readmeHead h3{margin:0;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}
 .dshm-readme{max-height:62vh;overflow:auto;font-size:13px;line-height:1.65;color:var(--dsw-alias-label-primary,#1f2328);padding-right:4px}
+.dshm-readmeNotice{font-size:12px;line-height:1.5;color:var(--dsw-alias-state-warn-primary,#b45309);background:rgba(180,83,9,.09);border:1px solid rgba(180,83,9,.25);border-radius:6px;padding:5px 10px;margin:2px 0 8px}
 .dshm-readmeLoading{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--dsw-alias-label-tertiary,#9ca3af);padding:6px 0}
 .dshm-readme h1,.dshm-readme h2{font-size:16px;font-weight:600;line-height:24px;margin:14px 0 6px;border-bottom:1px solid var(--dsw-alias-border-l2,#e5e7eb);padding-bottom:4px}
 .dshm-readme h3{font-size:14px;font-weight:600;margin:12px 0 4px}
@@ -1077,18 +1082,24 @@ function MarketSection(props) {
     const key = name + '|' + (url || '') + '|' + rlang
     const cached = readmeCache.get(key)
     if (cached !== undefined) {
-      setReadmeView({ name, url: url || null, lang: rlang, loading: false, contentLang: cached.contentLang, content: cached.content, source: cached.source, repaired: cached.repaired === true })
+      setReadmeView({ name, url: url || null, lang: rlang, loading: false, contentLang: cached.contentLang, content: cached.content, source: cached.source, repaired: cached.repaired === true, notice: cached.notice || null })
       return
     }
     const qs = url
       ? '?url=' + encodeURIComponent(url) + '&lang=' + rlang
       : '?name=' + encodeURIComponent(name) + '&lang=' + rlang
-    setReadmeView({ name, url: url || null, lang: rlang, loading: true })
+    // 切换语言时保留旧内容：加载完成前不闪「未提供 README」占位，
+    // 旧内容保持可见，顶部只显示一条加载行。
+    setReadmeView(prev => prev !== null && prev.name === name && prev.url === (url || null)
+      ? { ...prev, lang: rlang, loading: true, notice: null }
+      : { name, url: url || null, lang: rlang, loading: true })
     fetch('/dsh-plugin-market/readme' + qs, { cache: 'no-store' })
       .then(res => res.json())
       .then(body => {
         if (body.ok) {
-          const entry = { contentLang: body.contentLang, content: body.content, source: body.source, repaired: body.repaired === true }
+          // 请求语言与实际内容语言不符时提示（如仓库没有中文版）。
+          const notice = body.contentLang === rlang ? null : (rlang === 'zh' ? t('readmeNoZh') : t('readmeNoEn'))
+          const entry = { contentLang: body.contentLang, content: body.content, source: body.source, repaired: body.repaired === true, notice }
           readmeCache.set(key, entry)
           setReadmeView({ name, url: url || null, lang: rlang, loading: false, ...entry })
         } else {
@@ -1507,13 +1518,14 @@ function MarketSection(props) {
             }, 'EN'),
             readmeView.repaired && h('span', { className: 'dshm-configTag', style: { color: 'var(--dsw-alias-state-warn-primary,#b45309)' }, title: t('readmeRepairedHint') }, t('readmeRepaired')),
             h('button', { className: 'dshm-btn ghost', onClick: () => setReadmeView(null) }, '✕')),
+          readmeView.notice && h('div', { className: 'dshm-readmeNotice' }, 'ℹ️ ' + readmeView.notice),
           h('div', { className: 'dshm-readme' },
             readmeView.loading && h('div', { className: 'dshm-readmeLoading' }, h('span', { className: 'dshm-spin' }), t('loading')),
             readmeView.error && !readmeView.content
               ? h('div', { className: 'dshm-empty' }, t('readmeFail'))
               : readmeView.content
                 ? renderMarkdown(readmeView.content)
-                : h('div', { className: 'dshm-empty' }, t('readmeEmpty') + (readmeView.description ? ' — ' + readmeView.description : '')))))
+                : !readmeView.loading && h('div', { className: 'dshm-empty' }, t('readmeEmpty') + (readmeView.description ? ' — ' + readmeView.description : '')))))
     : null
 
   return h('div', { className: 'dshm-root' },
