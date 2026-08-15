@@ -21,10 +21,14 @@ const zh = {
   nav: '插件市场',
   subtitle: '发现社区为 DeepSeek Harness 打造的能力',
   disclaimer: '本市场仅提供插件的浏览、下载与管理。下载前只做最基础的静态检查，不构成安全或合规承诺；下载后使用插件产生的一切问题与损失，与作者无关。',
-  searchPh: '在精选目录里搜索：名称、作者或描述（中英互通）',
+  searchPh: '在社区（GitHub 实时）里搜索：名称或描述',
   searchPhCommunity: '在社区（GitHub 实时）里搜索：名称或描述',
   tabDiscover: '发现',
+  tabFavorites: '我的精选',
   tabInstalled: '已安装',
+  favEmpty: '还没有收藏。去「发现」页浏览社区插件，点 ☆ 收藏',
+  favAdd: '收藏到我的精选',
+  favRemove: '取消收藏',
   install: '安装',
   installing: '安装中…',
   installedBadge: '✓ 已装好',
@@ -138,10 +142,14 @@ const en = {
   nav: 'Plugin Market',
   subtitle: 'Discover community plugins for DeepSeek Harness',
   disclaimer: 'This market only provides plugin browsing, download and management. Only a minimal static check runs before download — no safety or compliance promise is made. The author is not responsible for any issues or losses arising from the use of installed plugins.',
-  searchPh: 'Search the curated catalog — name, author or description (zh/en both match)',
+  searchPh: 'Search the live GitHub community — name or description',
   searchPhCommunity: 'Search the live GitHub community — name or description',
   tabDiscover: 'Discover',
+  tabFavorites: 'My Favorites',
   tabInstalled: 'Installed',
+  favEmpty: 'No favorites yet — browse the Discover tab and tap ☆ to save plugins',
+  favAdd: 'Add to my favorites',
+  favRemove: 'Remove from favorites',
   install: 'Install',
   installing: 'Installing…',
   installedBadge: '✓ Installed',
@@ -353,6 +361,7 @@ const CSS = `
 .dshm-btn.primary:hover:not(:disabled){background:color-mix(in srgb,var(--dsw-alias-state-business-primary,#4f6ef7) 88%,#000)}
 .dshm-btn.ghost{border-color:var(--dsw-alias-border-l2,#d9d9d9);color:var(--dsw-alias-label-primary,#1f2328)}
 .dshm-btn.ghost:hover{background:var(--dsw-alias-interactive-bg-hover,rgba(0,0,0,.03))}
+.dshm-btn.fav{border-color:transparent;color:var(--dsw-alias-state-warn-primary,#eab308);background:color-mix(in srgb,var(--dsw-alias-state-warn-primary,#eab308) 12%,transparent);font-size:14px;padding:2px 8px}
 .dshm-btn.upd{background:color-mix(in srgb,var(--dsw-alias-state-warn-primary,#ea580c) 10%,transparent);color:var(--dsw-alias-state-warn-primary,#ea580c);font-weight:500}
 .dshm-btn.danger{border-color:var(--dsw-alias-state-error-primary,#dc2626);color:var(--dsw-alias-state-error-primary,#dc2626)}
 .dshm-btn.danger:hover{background:color-mix(in srgb,var(--dsw-alias-state-error-primary,#dc2626) 10%,transparent)}
@@ -654,8 +663,6 @@ function MarketSection(props) {
     const s = props.locale.getSnapshot()
     if (s && typeof s.active === 'string') lang = s.active.toLowerCase().startsWith('zh') ? 'zh' : 'en'
   } catch {}
-  const [data, setData] = useState(null)
-  const [loadError, setLoadError] = useState(false)
   const [installed, setInstalled] = useState({})
   const [installedRepos, setInstalledRepos] = useState({})
   const [tab, setTab] = useState(() => {
@@ -664,6 +671,7 @@ function MarketSection(props) {
     return saved || 'discover'
   })
   const [q, setQ] = useState('')
+  const [favorites, setFavorites] = useState([])
   const [confirming, setConfirming] = useState(null)
   const [busyUrl, setBusyUrl] = useState(null)
   const [doneUrls, setDoneUrls] = useState([])
@@ -684,7 +692,6 @@ function MarketSection(props) {
   const [bootId, setBootId] = useState(null)
   const [showTop, setShowTop] = useState(false)
   const [sort, setSort] = useState('hot')
-  const [browseAll, setBrowseAll] = useState(false)
   const [searchResults, setSearchResults] = useState([])
   const [searchQuery, setSearchQuery] = useState('')
   const [searchMeta, setSearchMeta] = useState(null)
@@ -757,18 +764,31 @@ function MarketSection(props) {
       .finally(() => setTogglingId(null))
   }, [])
 
-  /** 拉取精选目录；默认强制实时（force=1 跳过服务端缓存，失败回退缓存/快照）。 */
-  const refreshRegistry = useCallback((force) => {
-    setLoadError(false)
-    fetch('/dsh-market/registry' + (force !== false ? '?force=1' : ''), { cache: 'no-store' })
-      .then(res => { if (!res.ok) throw new Error('HTTP ' + res.status); return res.json() })
-      .then(body => setData(body.registry))
-      .catch(() => setLoadError(true))
+  /** 拉取我的精选列表。 */
+  const refreshFavorites = useCallback(() => {
+    fetch('/dsh-market/favorites', { cache: 'no-store' })
+      .then(res => res.json())
+      .then(body => setFavorites(Array.isArray(body.items) ? body.items : []))
+      .catch(() => {})
   }, [])
+
+  /** 收藏/取消收藏社区插件。 */
+  const toggleFavorite = useCallback((plugin) => {
+    const url = plugin.url
+    const isFav = favorites.some(f => f.url === url)
+    fetch('/dsh-market/favorites', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(isFav ? { action: 'remove', url } : { action: 'add', plugin }),
+    })
+      .then(res => res.json())
+      .then(body => { if (Array.isArray(body.items)) setFavorites(body.items) })
+      .catch(() => {})
+  }, [favorites])
 
   useEffect(() => {
     injectStyles()
-    refreshRegistry()
+    refreshFavorites()
     fetch('/dsh-market/status', { cache: 'no-store' })
       .then(res => res.json())
       .then(status => {
@@ -780,7 +800,7 @@ function MarketSection(props) {
       .catch(() => {})
     refreshInstalled()
     refreshEntries()
-  }, [refreshInstalled, refreshEntries, refreshRegistry])
+  }, [refreshInstalled, refreshEntries, refreshFavorites])
 
   // Pending-restart flags survive tab switches and page reloads, scoped to
   // one host process: a different boot id means the restart happened and the
@@ -859,28 +879,15 @@ function MarketSection(props) {
     })
   }, [fetchPageRaw, applySearchMeta])
 
-  // Search scope follows the active browse tab: 「精选目录」filters the
-  // curated registry locally (name/owner/desc/category, bilingual);
-  // 「社区全部」searches/browses live GitHub (empty query = browse the topic).
+  // 发现页 = 社区：输入关键词走 GitHub 实时搜索，空查询浏览整个主题。
   useEffect(() => {
     const query = q.trim()
-    if (!browseAll) {
-      // Curated tab: local filter over the registry — no GitHub round-trip.
-      setSearching(false)
-      setSearchFailed(false)
-      searchMetaRef.current = null
-      setSearchMeta(null)
-      searchQueryRef.current = query
-      setSearchQuery(query)
-      return
-    }
-    // Community tab: empty query browses the whole topic (fetchSearchPage('',1)).
     setSearching(true)
     const timer = setTimeout(() => {
       fetchSearchPage(query, 1).finally(() => setSearching(false))
     }, 350)
     return () => clearTimeout(timer)
-  }, [q, lang, searchNonce, browseAll, sort, fetchSearchPage])
+  }, [q, lang, searchNonce, sort, fetchSearchPage])
 
   /** "Load more": keep fetching GitHub pages until one full page of NEW items
    *  is collected (drift-tolerant); surplus stays buffered for the next click,
@@ -983,8 +990,10 @@ function MarketSection(props) {
             setInstalled(status.installed || {})
             const pending = readSession('dshm-pending')
             if (pending !== null && busyUrl !== null) {
-              const nowInstalled = data !== null && data.plugins.some(p =>
-                p.url === busyUrl && isInstalled(p, status.installed || {}))
+              // 安装完成判定：busyUrl 的 owner/repo 出现在 installed 的 spec 里。
+              const gh = /github\.com\/([A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+?)(?:\.git)?\/?$/.exec(busyUrl)
+              const nowInstalled = gh !== null && Object.values(status.installed || {}).some(spec =>
+                String(spec).toLowerCase().includes(('github:' + gh[1]).toLowerCase()))
               if (nowInstalled) {
                 sessionStorage.removeItem('dshm-pending')
                 setDoneUrls(urls => urls.includes(busyUrl) ? urls : urls.concat(busyUrl))
@@ -996,25 +1005,14 @@ function MarketSection(props) {
         .catch(() => {})
     }, 2000)
     return () => clearInterval(timer)
-  }, [busyUrl, updatingName, data, t])
+  }, [busyUrl, updatingName, t])
 
+  // 发现页结果：live GitHub search/browse（无精选本地目录了）。
   const plugins = useMemo(() => {
     const query = q.trim()
-    // 「社区全部」tab: live GitHub results; 「精选目录」tab: local filter below.
-    if (browseAll && searchQuery === query) return searchResults
-    if (data === null) return []
-    const needle = query.toLowerCase()
-    const terms = needle === '' ? [] : expandQuery(needle)
-    const list = data.plugins.filter(p => {
-      if (needle === '') return true
-      const cat = data.categories[p.category]
-      const hay = [p.name, p.owner, p.npm || '', descOf(p, 'zh'), descOf(p, 'en'), cat && cat.zh || '', cat && cat.en || ''].join(' ').toLowerCase()
-      return terms.some(term => term !== '' && hay.includes(term))
-    })
-    if (sort === 'hot') return [...list].sort((a, b) => (b.stars ?? -1) - (a.stars ?? -1))
-    if (sort === 'new') return [...list].sort((a, b) => String(b.added).localeCompare(String(a.added)))
-    return list
-  }, [data, q, browseAll, searchResults, searchQuery, sort, lang])
+    if (searchQuery === query) return searchResults
+    return []
+  }, [searchResults, searchQuery, q])
 
   const doInstall = useCallback((plugin) => {
     setConfirming(null)
@@ -1025,7 +1023,7 @@ function MarketSection(props) {
     fetch('/dsh-market/install', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ url: plugin.url, community: plugin.curated === false }),
+      body: JSON.stringify({ url: plugin.url }),
     })
       .then(res => res.json().then(body => ({ status: res.status, body })))
       .then(({ status, body }) => {
@@ -1109,16 +1107,14 @@ function MarketSection(props) {
     name => !updatedNames.includes(name) && updates[name] && updates[name].updateAvailable,
   )
 
-  /** Rich card for the curated catalog: avatar, description, stars and the
-   *  install button all visible up front, like the market's original look
-   *  (official tokens for type/sizes/colors). With `showTier`, community
-   *  browse/search results carry a 精选/社区 tag next to the title. */
-  const renderRichCard = (p, showTier) => {
+  /** Rich card for community plugins: avatar, description, stars, favorite
+   *  (★ 收藏/取消) and the install/update/uninstall actions. */
+  const renderRichCard = (p) => {
     const desc = descOf(p, lang)
     const done = doneUrls.includes(p.url) || hotUrls.includes(p.url)
     const already = isInstalled(p, installed)
     const busy = busyUrl === p.url
-    const catLabel = (data !== null && data.categories[p.category] && (data.categories[p.category][lang] || data.categories[p.category].en)) || p.category || ''
+    const isFav = favorites.some(f => f.url === p.url)
     const letter = p.name.replace(/^@[^/]+\//, '').replace(/^dsh[-_]/i, '').charAt(0).toUpperCase() || 'P'
     const inKey = already ? installedKeyOf(p, installed) : null
     const updAvail = inKey !== null && updates[inKey] && updates[inKey].updateAvailable === true && !updatedNames.includes(inKey)
@@ -1130,9 +1126,11 @@ function MarketSection(props) {
           h('div', { className: 'dshm-richTitle', title: p.name }, p.name),
           h('div', { className: 'dshm-richMeta' }, p.owner,
             typeof p.stars === 'number' && ' · ★ ' + p.stars)),
-        showTier && (p.curated === false
-          ? h('span', { className: 'dshm-configTag' }, t('communityBadge'))
-          : h('span', { className: 'dshm-configTag on' }, t('curatedTag'))),
+        h('button', {
+          className: 'dshm-btn ghost' + (isFav ? ' fav' : ''),
+          title: isFav ? t('favRemove') : t('favAdd'),
+          onClick: () => toggleFavorite(p),
+        }, isFav ? '★' : '☆'),
         done
           ? h('span', { className: 'dshm-btn done' }, t('installedBadge'))
           : already
@@ -1160,8 +1158,8 @@ function MarketSection(props) {
               ? h('button', { className: 'dshm-btn primary busy', disabled: true }, t('installing'))
               : h('button', {
                   className: 'dshm-btn primary',
-                  disabled: busyUrl !== null || !envReady || (p.curated === false && !gateOn),
-                  title: (p.curated === false && !gateOn) ? t('auditGateOff') : undefined,
+                  disabled: busyUrl !== null || !envReady || !gateOn,
+                  title: !gateOn ? t('auditGateOff') : undefined,
                   onClick: () => setConfirming(p),
                 }, t('install'))),
       h('div', { className: 'dshm-richDesc', title: desc }, desc),
@@ -1169,91 +1167,62 @@ function MarketSection(props) {
         h('span', { className: 'dshm-spin' }),
         h('code', { className: 'dshm-grow' }, progressLine || t('progressHint'))),
       h('div', { className: 'dshm-richFoot' },
-        catLabel !== '' && h('span', { className: 'dshm-configTag' }, catLabel),
         h('span', { className: 'dshm-grow' }),
         h('a', { className: 'dshm-src', href: p.url, target: '_blank', rel: 'noreferrer' }, t('viewSource'))))
   }
 
   const query = q.trim()
-  const browsing = browseAll && query === ''
-  const searchActive = browseAll
+  const browsing = query === ''
 
   const discoverBody = (() => {
-    // 「精选目录」tab: render the curated list filtered by the query locally.
-    if (!browseAll) {
-      if (loadError) return h('div', { className: 'dshm-empty' }, t('loadFail'))
-      if (data === null) return h('div', { className: 'dshm-loading' }, h('span', { className: 'dshm-spin' }), t('loading'))
-      return h(React.Fragment, null,
-        h('div', { className: 'dshm-catalogHeading' },
-          h('h3', null, t('tabDiscover')),
-          h('span', null, plugins.length),
-          h('div', { className: 'dshm-headingSort' },
-            ['hot', 'new'].map(key => h('button', {
-              key,
-              className: sort === key ? 'on' : '',
-              onClick: () => setSort(key),
-            }, t(key === 'hot' ? 'sortHot' : 'sortNew'))))),
-        plugins.length === 0
-          ? h('div', { className: 'dshm-empty' }, t('empty'))
-          : h('div', { className: 'dshm-cards' }, plugins.map(p => renderRichCard(p, false))))
+    if (searching || searchQuery !== query) {
+      return h('div', { className: 'dshm-loading' }, h('span', { className: 'dshm-spin' }), t('searching'))
     }
-    if (searchActive) {
-      if (searching || searchQuery !== query) {
-        return h('div', { className: 'dshm-loading' }, h('span', { className: 'dshm-spin' }), t('searching'))
-      }
-      if (searchFailed && searchResults.length === 0) {
-        return h('div', { className: 'dshm-empty' }, t('searchFail'), ' ',
-          h('button', { className: 'dshm-btn ghost', onClick: () => setSearchNonce(n => n + 1) }, t('retry')))
-      }
-      return h(React.Fragment, null,
-        h('div', { className: 'dshm-catalogHeading' },
-          h('h3', null, browsing ? t('browseAll') : t('searchResults')),
-          h('span', null, searchResults.length + (searchMeta && searchMeta.total ? ' / ' + searchMeta.total : '')),
-          browsing && h('span', { className: 'dshm-configTag' }, t('mixedNote')),
-          h('div', { className: 'dshm-headingSort' },
-            ['hot', 'new'].map(key => h('button', {
-              key,
-              className: sort === key ? 'on' : '',
-              onClick: () => setSort(key),
-            }, t(key === 'hot' ? 'sortHot' : 'sortNew'))))),
-        searchMeta && searchMeta.rateLimited && h('div', { className: 'dshm-note' }, '⚠️ ' + t('searchRateLimited')
-          + (searchMeta.retryAfterSeconds ? ' (~' + Math.max(1, Math.ceil(searchMeta.retryAfterSeconds / 60)) + ' min)' : '')),
-        searchResults.length > 0 && h('div', { className: 'dshm-note' },
-          (browsing ? t('browseAllHint') : t('searchNote'))
-          + (searchMeta && searchMeta.translatedTerms && searchMeta.translatedTerms.length > 0
-            ? ' · ' + t('translatedAs') + ': ' + searchMeta.translatedTerms.slice(0, 4).join(', ')
-            : '')),
-        searchResults.length === 0
-          ? h('div', { className: 'dshm-empty' }, t('empty'))
-          : h('div', { className: 'dshm-cards' }, searchResults.map(p => renderRichCard(p, true))),
-        searchMeta && searchMeta.hasMore && h('div', { className: 'dshm-more' },
-          h('button', { className: 'dshm-btn ghost', disabled: loadingMore, onClick: loadMore },
-            loadingMore ? t('loadingMore') : t('more') + ' · ' + searchResults.length + ' / ' + searchMeta.total)),
-        searchMeta && !searchMeta.hasMore && searchMeta.total > searchMeta.fetchable && searchMeta.fetchable > 0
-          && h('div', { className: 'dshm-note' }, t('githubCapNote')
-            .replace('{fetchable}', String(searchMeta.fetchable))
-            .replace('{total}', String(searchMeta.total))))
+    if (searchFailed && searchResults.length === 0) {
+      return h('div', { className: 'dshm-empty' }, t('searchFail'), ' ',
+        h('button', { className: 'dshm-btn ghost', onClick: () => setSearchNonce(n => n + 1) }, t('retry')))
     }
-    if (loadError) return h('div', { className: 'dshm-empty' }, t('loadFail'))
-    if (data === null) return h('div', { className: 'dshm-loading' }, h('span', { className: 'dshm-spin' }), t('loading'))
     return h(React.Fragment, null,
       h('div', { className: 'dshm-catalogHeading' },
-        h('h3', null, t('tabDiscover')),
-        h('span', null, plugins.length),
+        h('h3', null, browsing ? t('browseAll') : t('searchResults')),
+        h('span', null, searchResults.length + (searchMeta && searchMeta.total ? ' / ' + searchMeta.total : '')),
         h('div', { className: 'dshm-headingSort' },
           ['hot', 'new'].map(key => h('button', {
             key,
             className: sort === key ? 'on' : '',
             onClick: () => setSort(key),
           }, t(key === 'hot' ? 'sortHot' : 'sortNew'))))),
-      plugins.length === 0
+      searchMeta && searchMeta.rateLimited && h('div', { className: 'dshm-note' }, '⚠️ ' + t('searchRateLimited')
+        + (searchMeta.retryAfterSeconds ? ' (~' + Math.max(1, Math.ceil(searchMeta.retryAfterSeconds / 60)) + ' min)' : '')),
+      searchResults.length > 0 && h('div', { className: 'dshm-note' },
+        (browsing ? t('browseAllHint') : t('searchNote'))
+        + (searchMeta && searchMeta.translatedTerms && searchMeta.translatedTerms.length > 0
+          ? ' · ' + t('translatedAs') + ': ' + searchMeta.translatedTerms.slice(0, 4).join(', ')
+          : '')),
+      searchResults.length === 0
         ? h('div', { className: 'dshm-empty' }, t('empty'))
-        : h('div', { className: 'dshm-cards' }, plugins.map(renderRichCard)))
+        : h('div', { className: 'dshm-cards' }, searchResults.map(p => renderRichCard(p))),
+      searchMeta && searchMeta.hasMore && h('div', { className: 'dshm-more' },
+        h('button', { className: 'dshm-btn ghost', disabled: loadingMore, onClick: loadMore },
+          loadingMore ? t('loadingMore') : t('more') + ' · ' + searchResults.length + ' / ' + searchMeta.total)),
+      searchMeta && !searchMeta.hasMore && searchMeta.total > searchMeta.fetchable && searchMeta.fetchable > 0
+        && h('div', { className: 'dshm-note' }, t('githubCapNote')
+          .replace('{fetchable}', String(searchMeta.fetchable))
+          .replace('{total}', String(searchMeta.total))))
   })()
 
   const installedEntries = Object.entries(installed)
   installedEntries.sort((a, b) => (installedTimes[b[0]]?.installed ?? 0) - (installedTimes[a[0]]?.installed ?? 0))
   if (!installedTimeDesc) installedEntries.reverse()
+
+  // 我的精选：收藏的社区插件，同样可安装/更新/卸载。
+  const favoritesBody = favorites.length === 0
+    ? h('div', { className: 'dshm-empty' }, t('favEmpty'))
+    : h(React.Fragment, null,
+        h('div', { className: 'dshm-catalogHeading' },
+          h('h3', null, t('tabFavorites')),
+          h('span', null, favorites.length)),
+        h('div', { className: 'dshm-cards' }, favorites.map(p => renderRichCard(p))))
 
   const installedBody = installedEntries.length === 0
     ? h('div', { className: 'dshm-empty' }, t('installedEmpty'))
@@ -1268,15 +1237,12 @@ function MarketSection(props) {
               onClick: () => setInstalledTimeDesc(v => !v),
             }, t('sortTime') + (installedTimeDesc ? ' ↓' : ' ↑')))),
         installedEntries.map(([name, spec]) => {
-          const entry = data === null ? undefined : data.plugins.find(p => p.name === name
-            || (repoOf(p.url) !== null && String(spec).toLowerCase().includes(('github:' + repoOf(p.url)).toLowerCase())))
           const status = updates[name]
           const version = status && status.version ? 'v' + status.version : ''
           const specText = String(spec)
           const ghSpec = /^github:([A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+?)(?:#|$)/.exec(specText)
-          const repoUrl = entry !== undefined ? entry.url : ghSpec !== null ? 'https://github.com/' + ghSpec[1] : null
           const repoInfo = installedRepos[name]
-          const gitUrl = repoUrl !== null ? repoUrl : typeof repoInfo === 'string' && repoInfo !== '' ? repoInfo : null
+          const gitUrl = ghSpec !== null ? 'https://github.com/' + ghSpec[1] : typeof repoInfo === 'string' && repoInfo !== '' ? repoInfo : null
           const updAvailable = !!(status && status.updateAvailable)
           const timeInfo = installedTimes[name]
           const timeTitle = (timeInfo?.installed || timeInfo?.updated)
@@ -1419,16 +1385,15 @@ function MarketSection(props) {
         searchIcon(),
         h('input', {
           type: 'search',
-          placeholder: browseAll ? t('searchPhCommunity') : t('searchPh'),
+          placeholder: t('searchPhCommunity'),
           value: q,
           onChange: e => setQ(e.target.value),
-          'aria-label': t('searchPh'),
+          'aria-label': t('searchPhCommunity'),
         })),
-      tab === 'discover' && h('div', { className: 'dshm-browse', title: t('browseAllHint') },
-        h('button', { className: !browseAll ? 'on' : '', onClick: () => setBrowseAll(false) }, t('browseCurated')),
-        h('button', { className: browseAll ? 'on' : '', onClick: () => setBrowseAll(true) }, t('browseAll'))),
       h('div', { className: 'dshm-tabs' },
-        h('button', { className: 'dshm-tab' + (tab === 'discover' ? ' on' : ''), onClick: () => { setTab('discover'); if (tab !== 'discover') refreshRegistry() } }, t('tabDiscover')),
+        h('button', { className: 'dshm-tab' + (tab === 'discover' ? ' on' : ''), onClick: () => setTab('discover') }, t('tabDiscover')),
+        h('button', { className: 'dshm-tab' + (tab === 'favorites' ? ' on' : ''), onClick: () => { setTab('favorites'); refreshFavorites() } },
+          t('tabFavorites') + (favorites.length > 0 ? ' (' + favorites.length + ')' : '')),
         h('button', { className: 'dshm-tab' + (tab === 'installed' ? ' on' : ''), onClick: () => { setTab('installed'); refreshInstalled(true) } },
           t('tabInstalled') + (Object.keys(installed).length > 0 ? ' (' + Object.keys(installed).length + ')' : ''),
           hasUpdates && h('span', { className: 'dshm-dot' })))),
@@ -1500,7 +1465,9 @@ function MarketSection(props) {
       onScroll: e => setShowTop(e.currentTarget.scrollTop > 400),
     },
       h('div', { className: 'dshm-bodyInner' },
-        tab === 'discover' ? discoverBody : installedBody)),
+        tab === 'discover' ? discoverBody
+          : tab === 'favorites' ? favoritesBody
+            : installedBody)),
     showTopEl,
     confirmModalEl,
     readmeModalEl)
