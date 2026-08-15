@@ -42,6 +42,7 @@ const zh = {
   confirmWarn: '插件是社区第三方代码。安装即表示你信任该来源；构建脚本默认被禁止执行。',
   cancel: '取消',
   empty: '没有匹配的插件',
+  rateLimitedEmpty: 'GitHub 搜索被限流且暂无缓存，稍等片刻再试（也可设置 DSHMARKET_GITHUB_TOKEN 提升配额）',
   installedEmpty: '还没有装过社区插件，去「发现」页逛逛吧',
   loadFail: '插件目录加载失败，请稍后重试',
   installFail: '安装失败',
@@ -163,6 +164,7 @@ const en = {
   confirmWarn: 'Plugins are third-party community code. Installing means you trust this source; build scripts are blocked by default.',
   cancel: 'Cancel',
   empty: 'No plugins match',
+  rateLimitedEmpty: 'GitHub search is rate-limited with no cached results — retry in a moment (set DSHMARKET_GITHUB_TOKEN for a higher quota)',
   installedEmpty: 'No community plugins yet — browse the Discover tab',
   loadFail: 'Failed to load the plugin catalog, please retry later',
   installFail: 'Install failed',
@@ -1200,7 +1202,8 @@ function MarketSection(props) {
           ? ' · ' + t('translatedAs') + ': ' + searchMeta.translatedTerms.slice(0, 4).join(', ')
           : '')),
       searchResults.length === 0
-        ? h('div', { className: 'dshm-empty' }, t('empty'))
+        ? h('div', { className: 'dshm-empty' },
+            searchMeta && searchMeta.rateLimited ? t('rateLimitedEmpty') : t('empty'))
         : h('div', { className: 'dshm-cards' }, searchResults.map(p => renderRichCard(p))),
       searchMeta && searchMeta.hasMore && h('div', { className: 'dshm-more' },
         h('button', { className: 'dshm-btn ghost', disabled: loadingMore, onClick: loadMore },
