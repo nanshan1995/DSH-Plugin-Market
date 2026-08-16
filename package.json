@@ -1,7 +1,7 @@
 {
   "name": "dsh-plugin-market",
   "description": "DeepSeek Harness plugin market: curated catalog + live GitHub browsing, zh/en translated search, pre-install static security audit gate, paginated community listing. · DSH 可视化插件市场：精选目录 + GitHub 实时浏览、中英翻译搜索、安装前静态安全审计闸门、社区分页加载。",
-  "version": "1.2.3",
+  "version": "1.2.4",
   "type": "module",
   "main": "lib/index.js",
   "license": "MIT",

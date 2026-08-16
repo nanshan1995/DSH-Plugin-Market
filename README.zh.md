@@ -23,7 +23,7 @@ DeepSeek Harness 插件市场：逛、搜、点一下安装——每笔安装/�
 
 ## 安装方式
 
-> 前置：已安装 DeepSeek Harness（`dsh web`），本机可用 pnpm（市场会自查并引导安装）。
+> 前置：已安装 DeepSeek Harness（`dsh web`），本机可用 pnpm（市场会自查并引导安装）。Windows 需 10 1803+（审计解压用系统自带 bsdtar）。
 
 **方式一：从 GitHub 安装（推荐）**
 
@@ -62,7 +62,7 @@ dsh plugin --profile web add dsh-plugin-market
 | 环境变量 | 作用 |
 |---|---|
 | `DSHMARKET_AUDIT_GATE=off` | 关闭审计闸门（社区来源将直接禁止安装，fail-closed） |
-| `DSHMARKET_GITHUB_TOKEN` | 提升 GitHub 搜索配额（默认未认证约 10 次/分钟） |
+| `DSHMARKET_GITHUB_TOKEN` | 提升 GitHub 搜索配额（默认未认证约 10 次/分钟）。未设置时会顺带读取通用 `GITHUB_TOKEN`——该凭据只发往 api.github.com |
 | `DSHMARKET_TRANSLATE_PROVIDER` / `DSHMARKET_TRANSLATE_MODEL` | 搜索翻译用的大模型（默认 `deepseek-official` / `deepseek-v4-flash`，走宿主已配置的 LLM 凭证） |
 | `DSHMARKET_README_PROXY` | 显式指定 README/审计下载走的 HTTP 代理（不设则自动探测：环境变量代理 → 本地端口 → 直连） |
 
