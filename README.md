@@ -23,7 +23,7 @@ Plugin market inside DeepSeek Harness: browse, search, one-click install — eve
 
 ## Installation
 
-> Prerequisites: DeepSeek Harness (`dsh web`) running; pnpm available (the market detects and offers to install it).
+> Prerequisites: DeepSeek Harness (`dsh web`) running; pnpm available (the market detects and offers to install it). Windows needs 10 1803+ (bundled bsdtar for the audit step).
 
 **Option 1: from GitHub (recommended)**
 
@@ -62,7 +62,7 @@ Restart DeepSeek Harness, then open Settings → Plugin Market.
 | Env var | Effect |
 |---|---|
 | `DSHMARKET_AUDIT_GATE=off` | Disables the audit gate (all sources are then refused outright — fail-closed) |
-| `DSHMARKET_GITHUB_TOKEN` | Raises the GitHub search quota (unauthenticated is ~10 req/min) |
+| `DSHMARKET_GITHUB_TOKEN` | Raises the GitHub search quota (unauthenticated is ~10 req/min). Note: the market also reads a plain `GITHUB_TOKEN` env var if `DSHMARKET_GITHUB_TOKEN` is unset — the token is only sent to api.github.com |
 | `DSHMARKET_TRANSLATE_PROVIDER` / `DSHMARKET_TRANSLATE_MODEL` | Model used for query translation (defaults `deepseek-official` / `deepseek-v4-flash`, using the host's configured LLM credentials) |
 | `DSHMARKET_README_PROXY` | Explicit HTTP proxy for README/audit downloads (otherwise auto-detected: env proxy → local port probe → direct) |
 
