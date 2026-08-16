@@ -1263,6 +1263,8 @@ function MarketSection(props) {
         sessionStorage.removeItem('dshm-pending')
         if (status === 200 && body.ok) {
           sessionStorage.setItem('dshm-tab', 'installed')
+          // 装完立即切到「已安装」页，用户能看到刚装好的插件。
+          setTab('installed')
           if (body.hot) {
             setHotUrls(urls => urls.includes(plugin.url) ? urls : urls.concat(plugin.url))
             setHotNames(names => names.includes(plugin.name) ? names : names.concat(plugin.name))
